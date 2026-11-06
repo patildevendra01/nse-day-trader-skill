@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- synthetic fixture for the tests, not real news -->
+<rss version="2.0">
+    <channel>
+        <description>Latest Financial News for RELIANCE.NS</description>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-01</guid>
+            <link>https://finance.yahoo.com/news/rel-results-focus.html</link>
+            <pubDate>Fri, 30 Oct 2026 02:10:00 +0000</pubDate>
+            <title>Reliance Industries shares in focus ahead of quarterly results</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-02</guid>
+            <link>https://finance.yahoo.com/news/rel-dividend-buyback.html</link>
+            <pubDate>Thu, 29 Oct 2026 11:30:00 +0000</pubDate>
+            <title>Reliance board to consider dividend and buyback proposal</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-03</guid>
+            <link>https://finance.yahoo.com/news/rel-nifty-futures.html</link>
+            <pubDate>Fri, 30 Oct 2026 03:05:00 +0000</pubDate>
+            <title>Nifty futures edge higher before RBI policy; Reliance (RELIANCE) among top gainers</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-04</guid>
+            <link>https://finance.yahoo.com/news/rel-target-price.html</link>
+            <pubDate>Thu, 29 Oct 2026 09:00:00 +0000</pubDate>
+            <title>Brokerage upgrade: target price raised on Reliance</title>
+        </item>
+        <item>
+            <description>Same story, second guid and link.</description>
+            <guid isPermaLink="false">rel-04b</guid>
+            <link>https://finance.yahoo.com/news/rel-target-price-copy.html</link>
+            <pubDate>Thu, 29 Oct 2026 09:30:00 +0000</pubDate>
+            <title>Brokerage upgrade: target price raised on Reliance</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-05</guid>
+            <link>https://finance.yahoo.com/news/rel-acquisition.html</link>
+            <pubDate>Wed, 28 Oct 2026 05:00:00 +0000</pubDate>
+            <title>Reliance unit signs acquisition pact</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">rel-06</guid>
+            <link>https://finance.yahoo.com/news/rel-sebi-order.html</link>
+            <pubDate>Tue, 27 Oct 2026 04:30:00 +0000</pubDate>
+            <title>SEBI order on a group entity; Tata Consultancy Services also in the news</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture, older than 48 hours.</description>
+            <guid isPermaLink="false">rel-07</guid>
+            <link>https://finance.yahoo.com/news/rel-old.html</link>
+            <pubDate>Sun, 25 Oct 2026 10:00:00 +0000</pubDate>
+            <title>Reliance retail expansion plans</title>
+        </item>
+        <item>
+            <description>Published after the pinned clock.</description>
+            <guid isPermaLink="false">rel-08</guid>
+            <link>https://finance.yahoo.com/news/rel-after.html</link>
+            <pubDate>Fri, 30 Oct 2026 06:00:00 +0000</pubDate>
+            <title>Reliance shares jump after the open</title>
+        </item>
+    </channel>
+</rss>

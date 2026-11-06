@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- synthetic fixture for the tests, not real news -->
+<rss version="2.0">
+    <channel>
+        <description>Latest Financial News for TCS.NS</description>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">tcs-01</guid>
+            <link>https://finance.yahoo.com/news/tcs-deal.html</link>
+            <pubDate>Thu, 29 Oct 2026 12:00:00 +0000</pubDate>
+            <title>TCS bags large deal from a European retailer</title>
+        </item>
+        <item>
+            <description>Synthetic test fixture.</description>
+            <guid isPermaLink="false">tcs-02</guid>
+            <link>https://finance.yahoo.com/news/tcs-hires.html</link>
+            <pubDate>Fri, 30 Oct 2026 01:00:00 +0000</pubDate>
+            <title>TCS CEO comments on hiring outlook</title>
+        </item>
+    </channel>
+</rss>
