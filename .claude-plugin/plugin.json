@@ -1,0 +1,21 @@
+{
+  "name": "nse-day-trader-skill",
+  "description": "11 Claude skills for intraday trading on the NSE: scan the Nifty 500 for setups, track news and exchange announcements, time every entry and exit, and replay every outcome before you risk a rupee.",
+  "version": "1.0.0",
+  "author": {
+    "name": "India port of Jake Schincariol's day-trader-skill"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-skills",
+    "day-trading",
+    "nse",
+    "india",
+    "nifty",
+    "backtesting",
+    "opening-range-breakout",
+    "paper-trading"
+  ],
+  "skills": "./"
+}

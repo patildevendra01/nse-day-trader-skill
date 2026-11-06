@@ -1,0 +1,15 @@
+{
+ "symbol": "HDFCBANK",
+ "quarters": [
+  {
+   "quarter_end": "2025-09-30",
+   "revenue_cr": 84000,
+   "net_income_cr": 16800
+  },
+  {
+   "quarter_end": "2026-09-30",
+   "revenue_cr": 92400,
+   "net_income_cr": 18480
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+{"data":[
+{"symbol":"RELIANCE","company":"Reliance Industries Limited","acqName":"Promoter Entity One","personCategory":"Promoters","secAcq":"250000","secVal":"363837500","tdpTransactionType":"Buy","acqfromDt":"28-Oct-2026","acqtoDt":"29-Oct-2026","intimDt":"30-Oct-2026"},
+{"symbol":"RELIANCE","company":"Reliance Industries Limited","acqName":"Some Director","personCategory":"Director","secAcq":"5000","secVal":"7270000","tdpTransactionType":"Sell","acqfromDt":"27-Oct-2026","acqtoDt":"27-Oct-2026","intimDt":"29-Oct-2026"},
+{"symbol":"RELIANCE","acqName":"","secAcq":"1","tdpTransactionType":"Buy","acqtoDt":"27-Oct-2026"}
+]}

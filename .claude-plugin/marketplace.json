@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "nse-day-trader-skill",
+  "description": "The Day Trader skill pack for Claude, ported to the Indian market (NSE, INR, IST)",
+  "owner": {
+    "name": "nse-day-trader-skill"
+  },
+  "plugins": [
+    {
+      "name": "nse-day-trader-skill",
+      "description": "Eleven Claude skills for NSE intraday trading: a chart scanner, a news monitor, an entry timer, an exit planner, a time machine that replays 10,000 sessions, a risk manager, a budget manager, an order executor (paper by default, never without your yes), price alerts, a results analyst and a bulk/block deal tracker.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
