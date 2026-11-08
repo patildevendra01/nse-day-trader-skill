@@ -632,6 +632,47 @@ class Flow(unittest.TestCase):
         self.assertIn('"tradingsymbol": "RELIANCE"', text)
         self.assertNotIn("Interactive Brokers", text)
 
+    def test_manual_fill_retry_with_same_broker_fill_id_is_idempotent(self):
+        args = ["fill", "--symbol", "ITC", "--side", "buy", "--qty", "5", "--price", "100",
+                "--fill-id", "trade-123", "--date", TODAY, "--portfolio", self.pf,
+                "--config", self.cfg, "--state", self.state]
+        code, _, _ = run(args)
+        self.assertEqual(code, 0)
+        with open(self.pf) as fh:
+            first = json.load(fh)
+        code, text, _ = run(args)
+        self.assertEqual(code, 0)
+        self.assertIn("already recorded", text)
+        with open(self.pf) as fh:
+            second = json.load(fh)
+        self.assertEqual(second["positions"][0]["shares"], first["positions"][0]["shares"])
+        self.assertEqual(second["cash"], first["cash"])
+        self.assertEqual(len(self.state_doc()["orders"]), 1)
+
+    def test_manual_fill_allows_distinct_broker_fill_ids_for_same_details(self):
+        base = ["fill", "--symbol", "ITC", "--side", "buy", "--qty", "5", "--price", "100",
+                "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state]
+        self.assertEqual(run(base + ["--fill-id", "trade-123"])[0], 0)
+        self.assertEqual(run(base + ["--fill-id", "trade-124"])[0], 0)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 10)
+        self.assertEqual(len(self.state_doc()["orders"]), 2)
+
+    def test_manual_fill_rejects_reusing_fill_id_with_different_details(self):
+        base = ["fill", "--symbol", "ITC", "--side", "buy", "--qty", "5", "--price", "100",
+                "--fill-id", "trade-123", "--date", TODAY, "--portfolio", self.pf,
+                "--config", self.cfg, "--state", self.state]
+        self.assertEqual(run(base)[0], 0)
+        changed = list(base)
+        changed[changed.index("5")] = "6"
+        code, _, err = run(changed)
+        self.assertEqual(code, 1)
+        self.assertIn("already used with different fill details", err)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 5)
+
     def test_fill_sell_relieves_the_oldest_lot(self):
         pf = {"cash": 0, "positions": [{"ticker": "ITC", "shares": 30, "lots": [
             {"id": "ITC-1", "date": "2025-01-02", "shares": 20, "cost": 8000.0},
