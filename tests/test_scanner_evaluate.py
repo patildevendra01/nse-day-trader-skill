@@ -184,6 +184,25 @@ class Evaluation(unittest.TestCase):
         self.assertEqual(quality["loaded_symbols_without_membership_history"], ["TEST"])
         self.assertEqual(quality["status"], "review_required")
 
+    def test_universe_history_quality_uses_each_symbols_own_chart_range(self):
+        full = make_series([100 + i * 0.2 for i in range(45)])
+        short = make_series([100 + i * 0.2 for i in range(45)])
+        short = {key: (value[10:] if key in ("t", "o", "h", "l", "c", "adjclose", "v") else value)
+                 for key, value in short.items()}
+        data = {"FULL": full, "SHORT": short}
+        history = {
+            "FULL": [(datetime.date(2025, 1, 1), datetime.date(2025, 2, 14))],
+            "SHORT": [(datetime.date(2025, 1, 1), datetime.date(2025, 2, 14))],
+        }
+        quality = evaluate.universe_history_quality(history, data, ["FULL", "SHORT"])
+        short_gaps = [gap for gap in quality["per_symbol_chart_coverage_gaps"]
+                      if gap["symbol"] == "SHORT"]
+        full_gaps = [gap for gap in quality["per_symbol_chart_coverage_gaps"]
+                     if gap["symbol"] == "FULL"]
+        self.assertTrue(any(gap["gap_side"] == "before_chart" for gap in short_gaps))
+        self.assertEqual(full_gaps, [])
+        self.assertEqual(quality["status"], "review_required")
+
     def test_series_quality_rejects_inconsistent_ohlc(self):
         series = make_series([100 + i * 0.1 for i in range(40)])
         series["h"][12] = series["o"][12] - 1
