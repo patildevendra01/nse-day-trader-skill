@@ -573,9 +573,11 @@ def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.
         closes = [c for _, c in bars]
         tags, nums = find_setups(closes)
         if tags:
-            hits.append({"symbol": sym, "setups": tags, "price": round(closes[-1], 2),
-                         "close_date": d_last.isoformat(), "rsi": round(nums["rsi"], 1),
-                         "volume": int(vol) if vol is not None else None})
+            directional = {"breakout_20d", "bull_flag", "reclaim_ma20", "oversold_bounce"}
+            classification = "momentum_watch" if directional.intersection(tags) else "oversold_only_watch"
+            hits.append({"symbol": sym, "setups": tags, "classification": classification,
+                         "price": round(closes[-1], 2), "close_date": d_last.isoformat(),
+                         "rsi": round(nums["rsi"], 1), "volume": int(vol) if vol is not None else None})
     hits.sort(key=lambda h: (-(h["price"] * (h["volume"] or 0)), h["symbol"]))  # most rupees traded first
     last_date = max(dates, key=lambda d: (dates[d], d)) if dates else None
     counts["hits"] = len(hits)
