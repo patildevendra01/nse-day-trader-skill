@@ -16,11 +16,13 @@ session in the data.
 
 How the replays work (the same algorithm and random draws as the US pack's sim.py):
   1. Fetch 60 days of 5-minute bars (Yahoo v8 chart, SYMBOL.NS, range=60d
-     interval=5m; one request). Keep only FULL sessions before the plan's date:
-     75 bars, 09:15 to 15:30 IST. Short days (the Diwali Muhurat evening hour,
-     a feed gap) and today are left out.
-  2. The pool: for every bar slot 1..74 of the day, each past session's bar as
-     ratios to the previous bar's close: (open, high, low, close) / prev close.
+     interval=5m; one request). Regular plans use full 75-bar sessions,
+     09:15 to 15:30 IST. A 2026-11-08 Muhurat plan uses its 11 bars,
+     14:20 to 15:15 IST; its replay pool still uses prior full sessions.
+  2. The pool: for every regular-session bar slot 1..74, each past session's
+     bar as ratios to the previous bar's close. For Muhurat, replay draws are
+     limited to the matching afternoon clock slots (14:25 onward), not bars
+     outside the special session.
   3. One replay starts at the entry price and walks the rest of the session.
      For each bar i it picks a slot j = i + randint(-window, window), kept in
      1..74, then one past bar from pool[j] (random.choice), and scales it to
@@ -785,8 +787,11 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         "verdict": verdict(mc),
         "verdict_notes": verdict_notes(mc),
         "warnings": warn,
-        "note": ("A simulation built from %s's own last %d full sessions. It is not a prediction: earnings, "
-                 "news and halts can do things those sessions never did. Same seed, same numbers." % (sym, len(sessions))),
+        "note": (("A Muhurat-session simulation using the stock's corresponding afternoon bars from its last "
+                  "%d full regular sessions as an analogue; it is not historical Muhurat data. " % len(sessions))
+                 if plan["date"] == MUHURAT_DATE else
+                 ("A simulation built from %s's own last %d full sessions. " % (sym, len(sessions)))) +
+                "It is not a prediction: earnings, news and halts can do things those sessions never did. Same seed, same numbers.",
     }
 
 
