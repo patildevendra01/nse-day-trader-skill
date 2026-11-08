@@ -104,11 +104,37 @@ class Evaluation(unittest.TestCase):
         self.assertEqual(row["win_rate_pct"], 66.67)
         self.assertEqual(row["median_return_pct"], 1.0)
 
+    def test_round_trip_cost_is_subtracted_from_net_return_only(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        gross, _ = evaluate.evaluate_series(series)
+        net, _ = evaluate.evaluate_series(series, round_trip_cost_pct=0.25)
+        self.assertTrue(gross)
+        self.assertEqual(len(gross), len(net))
+        for before, after in zip(gross, net):
+            self.assertAlmostEqual(before["return_pct"], after["return_pct"])
+            self.assertAlmostEqual(after["net_return_pct"], before["return_pct"] - 0.25)
+
+    def test_cost_assumption_is_reported_and_changes_net_summary(self):
+        data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
+        report = evaluate.evaluate(data, round_trip_cost_pct=0.30)
+        self.assertTrue(report["trade_costs_included"])
+        self.assertEqual(report["round_trip_cost_assumption_pct"], 0.30)
+        row = report["summary"][0]
+        self.assertLessEqual(row["average_net_return_pct"], row["average_return_pct"])
+        self.assertIn("net_win_rate_pct", row)
+
+    def test_invalid_cost_assumptions_are_rejected(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        for invalid in (-0.1, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                evaluate.evaluate_series(series, round_trip_cost_pct=invalid)
+
     def test_evaluate_is_offline_and_reports_limitations(self):
         data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
         report = evaluate.evaluate(data)
         self.assertEqual(report["symbols_loaded"], 1)
         self.assertFalse(report["trade_costs_included"])
+        self.assertEqual(report["round_trip_cost_assumption_pct"], 0.0)
         self.assertTrue(any("survivorship bias" in x for x in report["limitations"]))
 
 
