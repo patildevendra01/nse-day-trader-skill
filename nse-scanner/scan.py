@@ -634,6 +634,33 @@ def find_setups(closes):
                   "run_pct": run * 100, "range5_pct": rng5 * 100}
 
 
+def explain_setups(closes, tags, nums):
+    """Return factual setup reasons and close-based invalidation conditions."""
+    why, invalidation = [], []
+    last = closes[-1]
+    if "breakout_20d" in tags:
+        level = nums["high20"]
+        why.append("Latest close ₹%.2f is above the previous 20-session closing high ₹%.2f" % (last, level))
+        invalidation.append("A later completed daily close at or below ₹%.2f invalidates the 20-session breakout" % level)
+    if "bull_flag" in tags:
+        low = min(closes[-5:])
+        why.append("Price rose %.1f%% over the prior 10-session run; the latest 5 closes stayed within a %.1f%% range" %
+                   (nums["run_pct"], nums["range5_pct"]))
+        invalidation.append("A later completed daily close below the flag's recent 5-session closing low ₹%.2f invalidates this flag setup" % low)
+    if "reclaim_ma20" in tags:
+        why.append("Latest close ₹%.2f moved above the current 20-session average ₹%.2f after the prior close was below its prior 20-session average" %
+                   (last, nums["ma20"]))
+        invalidation.append("A later completed daily close below its then-current 20-session average invalidates the MA20 reclaim")
+    if "oversold_bounce" in tags:
+        prior = closes[-2]
+        why.append("Yesterday's RSI was below 30 and today's close ₹%.2f is above the prior close ₹%.2f" % (last, prior))
+        invalidation.append("A later completed daily close at or below ₹%.2f invalidates the bounce's higher-close condition" % prior)
+    if "oversold" in tags:
+        why.append("RSI %.1f is below 30, meeting the oversold threshold" % nums["rsi"])
+        invalidation.append("RSI reaching 30 or higher ends the oversold condition")
+    return why, invalidation
+
+
 def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.0, market_regime=None):
     """Pure. data = {SYM: series}. Returns (hits, counts, last_date)."""
     hits, dates = [], {}
@@ -672,12 +699,14 @@ def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.
             directional = {"breakout_20d", "bull_flag", "reclaim_ma20", "oversold_bounce"}
             classification = "momentum_watch" if directional.intersection(tags) else "oversold_only_watch"
             score, trend, relvol, reasons = rank_candidate(s, closes, dates_for_score, tags, nums, market_regime)
+            setup_reasons, invalidation = explain_setups(closes, tags, nums)
             hits.append({"symbol": sym, "setups": tags, "classification": classification,
                          "price": round(closes[-1], 2), "close_date": d_last.isoformat(),
                          "rsi": round(nums["rsi"], 1), "volume": int(vol) if vol is not None else None,
                          "score": score, "trend": trend,
                          "relative_volume": round(relvol, 2) if relvol is not None else None,
-                         "market_regime": market_regime or "not_checked", "score_reasons": reasons})
+                         "market_regime": market_regime or "not_checked", "score_reasons": reasons,
+                         "setup_reasons": setup_reasons, "invalidation_conditions": invalidation})
     hits.sort(key=lambda h: (-h["score"], -(h["price"] * (h["volume"] or 0)), h["symbol"]))
     last_date = max(dates, key=lambda d: (dates[d], d)) if dates else None
     counts["hits"] = len(hits)
@@ -1071,6 +1100,8 @@ def cmd_daily(a):
         print("  %-11s %13s  score %3d  RSI %5.1f  %s" % (h["symbol"], money(h["price"]),
                                                            h["score"], h["rsi"],
                                                            ", ".join(LABEL[t] for t in h["setups"])))
+        print("      Why: %s" % "; ".join(h["setup_reasons"]))
+        print("      Invalidated if: %s" % "; ".join(h["invalidation_conditions"]))
     if len(hits) > a.show:
         print("  ... and %d more in the watchlist (--show N for more)." % (len(hits) - a.show))
     if not a.no_write:
