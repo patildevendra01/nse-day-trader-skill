@@ -539,7 +539,7 @@ class Muhurat(unittest.TestCase):
         source = source[-75:]
         for i in range(11):
             src = source[61 + i]
-            res["timestamp"].append(utc_stamp(2026, 11, 8, 8, 50 + 5 * i))
+            res["timestamp"].append(utc_stamp(2026, 11, 8, 8, 50) + 300 * i)
             for key in ("open", "high", "low", "close", "volume"):
                 q[key].append(q[key][src])
         res["meta"]["regularMarketTime"] = utc_stamp(2026, 11, 8, 9, 45)
