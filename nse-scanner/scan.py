@@ -907,6 +907,7 @@ def cmd_universe(a):
 def cmd_daily(a):
     t0 = time.time()
     now = parse_now(a.now)
+    expected_date = last_completed_session(now)
     offline_syms = None
     if a.offline:
         data, failed = load_offline(a.offline)
