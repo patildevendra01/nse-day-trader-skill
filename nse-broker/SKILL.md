@@ -225,8 +225,11 @@ money). If the connector has no order tool, stay in paper mode.
   cancel the other leg.
 - For manual fill records, pass the broker's unique trade/execution ID with
   `--fill-id`. Repeating the same command with the same ID and details is safe:
-  it will not add the shares or cash twice. A different broker fill must use its
-  own ID, even if its quantity and price happen to match. If your broker does not
+  it will not add the shares or cash twice. The portfolio also stores the fill
+  details against each ID, so a retry after an interrupted log write rejects
+  changed details instead of attaching the old ID to a different trade. A
+  different broker fill must use its own ID, even if its quantity and price
+  happen to match. If your broker does not
   show a trade ID, do not invent one; omit `--fill-id` and take extra care not
   to repeat the command.
 
