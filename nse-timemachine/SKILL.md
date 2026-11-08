@@ -53,10 +53,14 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 
 ## How it works
 
-1. **The pool.** It keeps only FULL sessions before the plan's date: all 75
-   five-minute bars, 09:15 to 15:30 IST. Special sessions (such as the
-   Diwali Muhurat evening hour), gaps and today are left out. Every bar becomes four ratios to the bar before it:
-   open, high, low and close over the previous close.
+1. **The pool.** It keeps only FULL regular sessions before the plan's date:
+   all 75 five-minute bars, 09:15 to 15:30 IST. Special sessions, gaps and
+   today are not used as historical pool sessions. For a 2026-11-08 Muhurat
+   plan, the plan day itself is read as 11 bars from 14:20 to 15:15 IST.
+   Its replay pool samples only corresponding afternoon clock slots from the
+   prior full regular sessions; this is an afternoon analogue, not historical
+   Muhurat-session data. Every pool bar becomes four ratios to the previous
+   bar's close: open, high, low and close over the previous close.
 2. **One replay.** Start at the entry price. For each bar left in the day,
    pick a past bar from the same time of day (plus or minus 2 bars) at
    random, and scale it to the current price. Bar by bar, it checks the stop
@@ -94,7 +98,7 @@ days of 1-min bars, too few sessions for a fair pool. It refuses, in one
 plain line, when there are fewer than 20 full sessions, when the entry bar is
 not in the data (wrong date, not closed yet, a future day), or when the plan
 does not make sense (a stop above a buy's entry, an entry off the 5-minute
-grid or outside 09:20 to 15:25 IST). A live in-progress bar is never used.
+grid or outside that date's session entry window). A live in-progress bar is never used.
 
 ## Steps
 
