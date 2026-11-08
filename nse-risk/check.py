@@ -520,11 +520,17 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         if ref is None:
             cands = [(p, w) for p, w in ((plan_entry, "plan"), (live, "price")) if p]
             if cands:
-                ref, ref_from = max(cands, key=lambda x: x[0])
+                # Conservative reference: higher price for a buy, lower for a short sell.
+                ref, ref_from = (max(cands, key=lambda x: x[0]) if side == "buy"
+                                 else min(cands, key=lambda x: x[0]))
                 ref = _tick(ref, tick)
-                if live and ref_from == "price" and plan_entry and live > plan_entry + CENT:
-                    info.append("%s last %s is above the plan's entry %s: the risk is measured from %s"
-                                % (sym, _p(ref), _p(plan_entry), _p(ref)))
+                if live and ref_from == "price" and plan_entry:
+                    if side == "buy" and live > plan_entry + CENT:
+                        info.append("%s last %s is above the plan's entry %s: the risk is measured from %s"
+                                    % (sym, _p(ref), _p(plan_entry), _p(ref)))
+                    elif side == "sell" and live < plan_entry - CENT:
+                        info.append("%s last %s is below the plan's entry %s: short risk is measured from %s"
+                                    % (sym, _p(ref), _p(plan_entry), _p(ref)))
         if plan_entry and live is None and bare(sym) in prices and price_times is not None and typ == "market":
             warns.append("the %s price in nse/prices.json is older than %d minutes: not used"
                          % (sym, FRESH_MINUTES))
