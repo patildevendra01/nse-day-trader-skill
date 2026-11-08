@@ -535,7 +535,7 @@ class Muhurat(unittest.TestCase):
         res = raw["chart"]["result"][0]
         q = res["indicators"]["quote"][0]
         source = [i for i, ts in enumerate(res["timestamp"])
-                  if ist(ts).date().isoformat() == "2026-10-30"]
+                  if ist(ts).date().isoformat() == "2026-10-29"]
         source = source[-75:]
         for i in range(11):
             src = source[61 + i]
