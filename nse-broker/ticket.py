@@ -731,7 +731,7 @@ def cmd_result(a):
             print("Do NOT place exits yet. Record the actual fill with --filled-qty Q and --filled-price P,")
             print("then confirm the broker's current position and run ticket.py exits --index %d --filled-qty Q."
                   % a.index)
-        print("When either exit fills, cancel the other immediately.")
+        print("When either exit fills, cancel the other one immediately.")
     return 0
 
 
