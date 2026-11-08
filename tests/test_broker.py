@@ -313,6 +313,45 @@ class Flow(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn('"quantity": 7', text)
 
+    def test_reconcile_partial_fill_adds_only_the_new_delta_and_updates_exits(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        code, _, _ = run(self.args("result", "--index", "1", "--status", "placed",
+                                   "--filled-qty", "7", "--filled-price", "1432.60",
+                                   "--portfolio", self.pf))
+        self.assertEqual(code, 0)
+        code, text, _ = run(self.args("reconcile-fill", "--index", "1", "--filled-qty", "12",
+                                      "--filled-price", "1433.10", "--portfolio", self.pf,
+                                      now="2026-10-30 09:43"))
+        self.assertEqual(code, 0)
+        self.assertIn("Added only the new 5-share fill", text)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 12)
+        self.assertEqual(len(pf["positions"][0]["lots"]), 2)
+        st = self.state_doc()
+        latest_entry = ticket.latest(st, ticket.fingerprint(reliance()), TODAY)
+        self.assertEqual(latest_entry["filled_qty"], 12)
+        self.assertEqual(latest_entry["filled_price"], 1433.10)
+        code, text, _ = run(self.args("exits", "--index", "1", "--filled-qty", "12"))
+        self.assertEqual(code, 0)
+        self.assertIn('"quantity": 12', text)
+        self.assertNotIn('"quantity": 7', text)
+
+    def test_reconcile_fill_rejects_non_increasing_or_invalid_cumulative_values(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed",
+                      "--filled-qty", "7", "--filled-price", "1432.60", "--portfolio", self.pf))
+        for qty, price in (("7", "1432.60"), ("6", "1432.60"), ("24", "1432.60"),
+                           ("8", "0"), ("8", "nan"), ("8", "-1")):
+            code, _, err = run(self.args("reconcile-fill", "--index", "1", "--filled-qty", qty,
+                                         "--filled-price", price, "--portfolio", self.pf))
+            self.assertEqual(code, 1, (qty, price))
+            self.assertNotIn("Traceback", err)
+        with open(self.pf) as fh:
+            self.assertEqual(json.load(fh)["positions"][0]["shares"], 7)
+
     def test_exits_are_blocked_until_entry_fill_quantity_is_recorded(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
