@@ -488,15 +488,18 @@ def ticket_json(order, idx, cfg, risk, state, today):
 
 # ---------------------------------------------------------------- fills -> portfolio
 
-def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
-    """Record a filled order in nse/portfolio.json: cash and shares, with a
-    cost-basis lot per buy (oldest lots are relieved first on a sell)."""
+def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None):
+    """Record a fill once in nse/portfolio.json; fill_id makes retries idempotent."""
     pf = read_json(portfolio_path, "portfolio", required=False)
     if pf is None:
         budget = cfg.get("budget")
         if not budget:
             raise TicketError("no %s yet and no budget in the config to start it from" % portfolio_path)
         pf = {"cash": float(budget), "positions": []}
+    if fill_id:
+        applied = pf.setdefault("applied_fill_ids", [])
+        if fill_id in applied:
+            return pf
     symbol = bare(symbol)
     qty, price = float(qty), float(price)
     if not math.isfinite(qty) or qty <= 0 or abs(qty - round(qty)) > 1e-9:
@@ -535,17 +538,23 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
         if pos["shares"] <= 1e-9:
             pf["positions"].remove(pos)
         pf["cash"] = round(float(pf.get("cash", 0)) + cost, 2)
+    if fill_id:
+        pf.setdefault("applied_fill_ids", []).append(fill_id)
     write_json(portfolio_path, pf)
     return pf
+
+
+def _append_fill_log(state, now, today, symbol, side, qty, price):
+    state.setdefault("orders", []).append({
+        "at": ist_iso(now), "date": today, "status": "filled", "symbol": bare(symbol), "side": side,
+        "qty": _str_num(float(qty)), "price": float(price),
+        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), bare(symbol), _p(price))})
 
 
 def log_fill(state_path, now, today, symbol, side, qty, price):
     """A fill in the log, so the day's trades are on record (a buy and a sell the same day)."""
     state = load_state(state_path)
-    state.setdefault("orders", []).append({
-        "at": ist_iso(now), "date": today, "status": "filled", "symbol": bare(symbol), "side": side,
-        "qty": _str_num(float(qty)), "price": float(price),
-        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), bare(symbol), _p(price))})
+    _append_fill_log(state, now, today, symbol, side, qty, price)
     write_json(state_path, state)
 
 
@@ -724,12 +733,15 @@ def cmd_result(a):
     if filled_qty is not None:
         new["filled_qty"] = filled_qty
         new["filled_price"] = price
+    if a.status == "placed" and filled_qty is not None:
+        fill_id = "entry:%s:%d" % (fp, filled_qty)
+        apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], filled_qty, price, today, fill_id=fill_id)
     state["orders"].append(new)
+    if a.status == "placed" and filled_qty is not None:
+        _append_fill_log(state, now, today, rec["symbol"], rec["side"], filled_qty, price)
     write_json(a.state, state)
     print("Recorded order %d as %s." % (a.index, a.status))
     if a.status == "placed" and filled_qty is not None:
-        apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], filled_qty, price, today)
-        log_fill(a.state, now, today, rec["symbol"], rec["side"], filled_qty, price)
         print("Added the fill to %s." % a.portfolio)
     elif a.status == "placed":
         print("When it fills, record it: ticket.py fill --symbol %s --side %s --qty Q --price P"
@@ -775,10 +787,11 @@ def cmd_reconcile_fill(a):
     new.update(at=ist_iso(now), date=today, status="placed", filled_qty=new_qty,
                filled_price=avg_price, fill_update=True, fill_delta_qty=delta_qty,
                fill_delta_price=round(delta_price, 8))
+    fill_id = "entry:%s:%d" % (fp, new_qty)
+    apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], delta_qty, delta_price, today, fill_id=fill_id)
     state["orders"].append(new)
+    _append_fill_log(state, now, today, rec["symbol"], rec["side"], delta_qty, delta_price)
     write_json(a.state, state)
-    apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], delta_qty, delta_price, today)
-    log_fill(a.state, now, today, rec["symbol"], rec["side"], delta_qty, delta_price)
     print("Updated cumulative entry fill: %d shares at average %s." % (new_qty, _p(avg_price)))
     print("Added only the new %d-share fill (incremental price %s) to %s." %
           (delta_qty, _p(delta_price), a.portfolio))
