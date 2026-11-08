@@ -35,6 +35,18 @@ class Evaluation(unittest.TestCase):
         self.assertGreater(one["entry_date"], one["signal_date"])
         self.assertGreater(one["entry"], 0)
 
+    def test_incomplete_current_session_bar_is_excluded(self):
+        closes = [100 + i * 0.1 for i in range(40)]
+        series = make_series(closes)
+        today = scan.ts_to_ist(series["t"][-1]).date()
+        now_utc = scan.ist_to_utc(datetime.datetime.combine(
+            today, datetime.time(10, 0)))
+        trades, skipped = evaluate.evaluate_series(series, now_utc=now_utc)
+        self.assertTrue(trades)
+        self.assertTrue(all(t["signal_date"] < today.isoformat() for t in trades))
+        self.assertTrue(all(t["entry_date"] < today.isoformat() for t in trades))
+        self.assertTrue(all(t["exit_date"] < today.isoformat() for t in trades))
+
     def test_no_future_bars_are_counted_as_trades(self):
         closes = [100 + i * 0.1 for i in range(30)]
         series = make_series(closes)
