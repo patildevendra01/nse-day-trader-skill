@@ -275,8 +275,9 @@ def bare(sym):
 
 
 def to_yahoo(sym):
-    """NSE symbol -> Yahoo's: RELIANCE -> RELIANCE.NS (M&M.NS, BAJAJ-AUTO.NS)."""
-    return bare(sym) + ".NS"
+    """NSE symbol -> Yahoo ticker; ^NSEI is the Nifty 50 benchmark."""
+    s = bare(sym)
+    return s if s == "^NSEI" else s + ".NS"
 
 
 def _q(sym):
@@ -516,6 +517,97 @@ def daily_closes(series, now_utc):
     return sorted(out.items())
 
 
+def ema(closes, period):
+    """Exponential moving average; None until a full period is available."""
+    if len(closes) < period:
+        return None
+    alpha = 2.0 / (period + 1)
+    value = sum(closes[:period]) / period
+    for price in closes[period:]:
+        value = price * alpha + value * (1 - alpha)
+    return value
+
+
+def market_trend(closes):
+    """Nifty 50 regime from completed closes."""
+    e20, e50 = ema(closes, 20), ema(closes, 50)
+    if e20 is None or e50 is None:
+        return "unknown"
+    if closes[-1] > e20 > e50:
+        return "bullish"
+    if closes[-1] < e20 < e50:
+        return "bearish"
+    return "mixed"
+
+
+def rank_candidate(series, closes, dates, tags, nums, regime=None):
+    """Transparent 0-100 heuristic; unavailable history earns no points."""
+    score, reasons = 0, []
+    setup_points = {"breakout_20d": 30, "bull_flag": 25, "reclaim_ma20": 18,
+                    "oversold_bounce": 12, "oversold": 5}
+    pts = max((setup_points.get(tag, 0) for tag in tags), default=0)
+    score += pts
+    if pts:
+        reasons.append("setup +%d" % pts)
+    e50, e200 = ema(closes, 50), ema(closes, 200)
+    trend = "insufficient_history"
+    if e50 is not None and e200 is not None:
+        if e50 > e200:
+            score += 20
+            trend = "uptrend"
+            reasons.append("EMA50 above EMA200 +20")
+        else:
+            trend = "downtrend"
+            reasons.append("EMA50 not above EMA200")
+    if e50 is not None:
+        if closes[-1] > e50:
+            score += 10
+            reasons.append("close above EMA50 +10")
+        else:
+            reasons.append("close below EMA50")
+    relvol = None
+    vols, stamps = series.get("v") or [], series.get("t") or []
+    if len(vols) == len(stamps):
+        by_date = {}
+        for stamp, volume in zip(stamps, vols):
+            day = ts_to_ist(stamp).date()
+            if volume is not None and day in dates:
+                by_date[day] = float(volume)
+        ordered = [by_date[day] for day in dates if day in by_date]
+        if len(ordered) >= 21 and sum(ordered[-21:-1]) > 0:
+            relvol = ordered[-1] / (sum(ordered[-21:-1]) / 20.0)
+            if relvol >= 1.5:
+                score += 15
+                reasons.append("relative volume %.2fx +15" % relvol)
+            elif relvol >= 1.2:
+                score += 10
+                reasons.append("relative volume %.2fx +10" % relvol)
+    rsi_value = nums.get("rsi")
+    if rsi_value is not None and 50 <= rsi_value <= 70 and any(
+        tag in tags for tag in ("breakout_20d", "bull_flag", "reclaim_ma20")
+    ):
+        score += 10
+        reasons.append("RSI momentum zone +10")
+    elif rsi_value is not None and rsi_value > 75:
+        score -= 5
+        reasons.append("RSI extended -5")
+    if "breakout_20d" in tags and nums.get("high20"):
+        extension = (closes[-1] / nums["high20"] - 1) * 100
+        if 0 < extension <= 3:
+            score += 10
+            reasons.append("breakout extension %.1f%% +10" % extension)
+        elif extension > 5:
+            score -= 5
+            reasons.append("breakout stretched %.1f%% -5" % extension)
+    if regime == "bullish":
+        score += 10
+        reasons.append("Nifty 50 bullish +10")
+    elif regime == "bearish":
+        score -= 8
+        reasons.append("Nifty 50 bearish -8")
+    return max(0, min(100, score)), trend, relvol, reasons
+
+
 def find_setups(closes):
     """closes (oldest first, >= 30) -> (setup keys, numbers)."""
     c = closes
@@ -542,7 +634,7 @@ def find_setups(closes):
                   "run_pct": run * 100, "range5_pct": rng5 * 100}
 
 
-def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.0):
+def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.0, market_regime=None):
     """Pure. data = {SYM: series}. Returns (hits, counts, last_date)."""
     hits, dates = [], {}
     expected_date = last_completed_session(now_utc)
@@ -574,14 +666,19 @@ def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.
         counts["scanned"] += 1
         dates[d_last] = dates.get(d_last, 0) + 1
         closes = [c for _, c in bars]
+        dates_for_score = [d for d, _ in bars]
         tags, nums = find_setups(closes)
         if tags:
             directional = {"breakout_20d", "bull_flag", "reclaim_ma20", "oversold_bounce"}
             classification = "momentum_watch" if directional.intersection(tags) else "oversold_only_watch"
+            score, trend, relvol, reasons = rank_candidate(s, closes, dates_for_score, tags, nums, market_regime)
             hits.append({"symbol": sym, "setups": tags, "classification": classification,
                          "price": round(closes[-1], 2), "close_date": d_last.isoformat(),
-                         "rsi": round(nums["rsi"], 1), "volume": int(vol) if vol is not None else None})
-    hits.sort(key=lambda h: (-(h["price"] * (h["volume"] or 0)), h["symbol"]))  # most rupees traded first
+                         "rsi": round(nums["rsi"], 1), "volume": int(vol) if vol is not None else None,
+                         "score": score, "trend": trend,
+                         "relative_volume": round(relvol, 2) if relvol is not None else None,
+                         "market_regime": market_regime or "not_checked", "score_reasons": reasons})
+    hits.sort(key=lambda h: (-h["score"], -(h["price"] * (h["volume"] or 0)), h["symbol"]))
     last_date = max(dates, key=lambda d: (dates[d], d)) if dates else None
     counts["hits"] = len(hits)
     return hits, counts, last_date
@@ -921,14 +1018,25 @@ def cmd_daily(a):
     if not a.offline:
         progress(a, "Fetching daily closes for %s symbols (%d spark requests)..."
                  % ("{:,}".format(len(symbols)), (len(symbols) + SPARK_MAX - 1) // SPARK_MAX))
-        data, failed = fetch_spark(symbols, "3mo", "1d", a.pause, a)
-    hits, counts, last_date = scan_daily(data, symbols, now, a.min_price, a.min_volume, a.min_turnover_cr)
+        data, failed = fetch_spark(symbols, "1y", "1d", a.pause, a)
+        benchmark, _ = fetch_spark(["^NSEI"], "1y", "1d", a.pause, a)
+        index_series = benchmark.get("^NSEI")
+        index_closes = [c for _, c in daily_closes(index_series, now)] if index_series else []
+        regime = market_trend(index_closes)
+    else:
+        index_series = data.get("^NSEI")
+        index_closes = [c for _, c in daily_closes(index_series, now)] if index_series else []
+        regime = market_trend(index_closes) if index_closes else "unknown"
+    hits, counts, last_date = scan_daily(data, symbols, now, a.min_price, a.min_volume,
+                                         a.min_turnover_cr, regime)
     nfailed = len(symbols) - counts["fetched"]
     as_of = ("%s close" % last_date.isoformat()) if last_date else None
     doc = {"created_by": "nse-scanner", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "mode": "daily",
            "as_of": as_of, "universe": len(symbols), "scanned": counts["scanned"], "failed": nfailed,
-           "source": "yahoo", "filters": {"min_price": a.min_price, "min_volume": a.min_volume,
+           "source": "yahoo", "market_regime": regime,
+           "filters": {"min_price": a.min_price, "min_volume": a.min_volume,
                        "min_turnover_cr": a.min_turnover_cr},
+           "ranking": "heuristic score 0-100; review score_reasons; not a prediction",
            "note": NOTE, "hits": hits}
     if a.offline:
         doc["offline"] = os.path.basename(a.offline.rstrip("/"))
@@ -955,12 +1063,14 @@ def cmd_daily(a):
         per = [(k, sum(1 for h in hits if k in h["setups"])) for k, _ in SETUPS]
         print("%d chart%s matched a setup: %s." % (len(hits), "" if len(hits) == 1 else "s",
                                                   ", ".join("%d %s" % (n, LABEL[k]) for k, n in per if n)))
-        print("Most rupees traded first (price x volume):")
+        print("Ranked by heuristic score (0-100), not a buy recommendation. Nifty 50: %s." % regime)
+        print("Highest-scoring candidates first:")
     else:
         print("No setups.")
     for h in hits[:a.show]:
-        print("  %-11s %13s  RSI %5.1f  %s" % (h["symbol"], money(h["price"]), h["rsi"],
-                                              ", ".join(LABEL[t] for t in h["setups"])))
+        print("  %-11s %13s  score %3d  RSI %5.1f  %s" % (h["symbol"], money(h["price"]),
+                                                           h["score"], h["rsi"],
+                                                           ", ".join(LABEL[t] for t in h["setups"])))
     if len(hits) > a.show:
         print("  ... and %d more in the watchlist (--show N for more)." % (len(hits) - a.show))
     if not a.no_write:
