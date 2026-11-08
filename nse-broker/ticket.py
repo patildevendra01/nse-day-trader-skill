@@ -670,7 +670,15 @@ def cmd_exits(a):
     rec = latest(state, fingerprint(order), today)
     if not rec or rec.get("status") != "placed" or rec.get("kind") != "entry":
         raise TicketError("record the entry as placed first; exits are only for a filled entry")
+    recorded_qty = rec.get("filled_qty")
+    if recorded_qty is None:
+        raise TicketError("no entry fill quantity is recorded; record the broker-confirmed fill with "
+                          "--filled-qty and --filled-price before generating exits")
     qty = _confirmed_fill_qty(a.filled_qty, order.get("qty"))
+    if qty != recorded_qty:
+        raise TicketError("exit quantity must match the recorded filled quantity (%s); update the fill "
+                          "record after checking the broker's current position"
+                          % _str_num(recorded_qty))
     print("EXIT ORDERS ONLY for %s: %s shares." % (bare(order.get("symbol")), qty))
     print("First cancel any unfilled remainder of the entry order. Then verify this is the broker's")
     print("current net position; use this quantity only if it matches the shares actually held.")
