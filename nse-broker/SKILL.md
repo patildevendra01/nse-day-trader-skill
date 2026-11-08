@@ -65,9 +65,11 @@ the broker connector, one at a time, each behind its own Allow once.
 ## One order, three tickets
 
 nse-budget writes ONE order with a `stop_loss` and a `take_profit`. Most
-Indian brokers have discontinued intraday bracket orders, so `ticket.py show`
-turns it into three Kite Connect `place_order` parameter sets (names from the
-Kite Connect API, so map them to whatever your connector calls them):
+Indian brokers have discontinued intraday bracket orders. The normal
+`ticket.py show` prints the entry parameter set only. After the broker confirms
+the actual filled quantity, `ticket.py exits --index N --filled-qty Q` prints
+the two exit parameter sets only (names from the Kite Connect API, so map them
+to whatever your connector calls them):
 
 - **entry**: BUY, `exchange` NSE, `tradingsymbol` (the bare symbol), `order_type`
   MARKET or LIMIT, `quantity`, `product` MIS (intraday) or CNC (delivery),
@@ -77,8 +79,9 @@ Kite Connect API, so map them to whatever your connector calls them):
   `"stop_type": "SL"`; check which one your broker accepts for equity).
 - **take-profit**: SELL the same quantity, `order_type` LIMIT at the target `price`.
 
-One yes covers the whole ticket (all three legs), because they are one
-decision. But:
+One yes covers the entry and its planned protection, because they are one
+decision. The exit tickets are generated only after the fill quantity is known.
+But:
 
 - **The normal `show` command prints the entry only.** It withholds exit tickets
   until the entry fill is confirmed. After checking the broker's current net
