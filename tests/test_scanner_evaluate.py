@@ -143,7 +143,7 @@ class Evaluation(unittest.TestCase):
     def test_universe_history_csv_validates_intervals(self):
         import os
         import tempfile
-        content = "symbol,effective_from,effective_to\\nTEST,2025-01-01,2025-01-31\\nTEST,2025-02-01,\\n"
+        content = "symbol,effective_from,effective_to\nTEST,2025-01-01,2025-01-31\nTEST,2025-02-01,\n"
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
             handle.write(content)
             path = handle.name
@@ -155,7 +155,7 @@ class Evaluation(unittest.TestCase):
     def test_universe_history_csv_rejects_overlapping_intervals(self):
         import os
         import tempfile
-        content = "symbol,effective_from,effective_to\\nTEST,2025-01-01,2025-02-01\\nTEST,2025-02-01,\\n"
+        content = "symbol,effective_from,effective_to\nTEST,2025-01-01,2025-02-01\nTEST,2025-02-01,\n"
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
             handle.write(content)
             path = handle.name
