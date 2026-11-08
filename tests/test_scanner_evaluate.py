@@ -77,10 +77,11 @@ class Evaluation(unittest.TestCase):
     def test_adjustment_factor_changes_historical_return(self):
         series = make_series([100 + i * 0.1 for i in range(40)])
         series["adjclose"] = list(series["c"])
-        series["adjclose"][31] *= 0.90
+        series["adjclose"][32] *= 0.90
         trades, _ = evaluate.evaluate_series(series)
-        one = next(t for t in trades if t["horizon"] == 1 and t["signal_date"] == "2025-01-30")
-        self.assertAlmostEqual(one["exit"], series["adjclose"][30])
+        three = next(t for t in trades if t["horizon"] == 3 and t["signal_date"] == "2025-01-30")
+        self.assertAlmostEqual(three["exit"], series["adjclose"][32])
+        self.assertAlmostEqual(three["return_pct"], (series["adjclose"][32] / series["o"][30] - 1) * 100)
 
     def test_no_future_bars_are_counted_as_trades(self):
         closes = [100 + i * 0.1 for i in range(30)]
