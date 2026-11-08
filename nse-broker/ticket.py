@@ -528,18 +528,9 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
     for p in pf.setdefault("positions", []):
         if bare(p.get("ticker") or p.get("symbol")) == symbol:
             pos = p
-    if side == "buy":
-        if pos is None:
-            pos = {"ticker": symbol, "shares": 0.0, "lots": []}
-            pf["positions"].append(pos)
-        lots = pos.setdefault("lots", [])
-        lots.append({"id": "%s-%d" % (symbol, len(lots) + 1), "date": date, "shares": qty, "cost": cost})
-        pos["shares"] = round(float(pos.get("shares", 0)) + qty, 6)
-        pf["cash"] = round(float(pf.get("cash", 0)) - cost, 2)
-    else:
-        if pos is None or float(pos.get("shares", 0)) + 1e-9 < qty:
-            raise TicketError("cannot record selling %s %s: the portfolio holds %s"
-                              % (_str_num(qty), symbol, pos.get("shares", 0) if pos else 0))
+    if side not in ("buy", "sell"):
+        raise TicketError("fill side must be buy or sell")
+    if pos is not None:
         lots = pos.get("lots", [])
         try:
             lot_shares = sum(float(lot["shares"]) for lot in lots)
@@ -554,7 +545,25 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
         if (not valid_lots or not math.isfinite(position_shares)
                 or abs(lot_shares - position_shares) > 1e-6):
             raise TicketError("portfolio integrity check failed for %s: position shares do not match valid lot records; "
-                              "reconcile the portfolio before recording a sale" % symbol)
+                              "reconcile the portfolio before recording a fill" % symbol)
+    try:
+        cash = float(pf.get("cash", 0))
+    except (TypeError, ValueError):
+        cash = float("nan")
+    if not math.isfinite(cash):
+        raise TicketError("portfolio cash must be a finite number before recording a fill")
+    if side == "buy":
+        if pos is None:
+            pos = {"ticker": symbol, "shares": 0.0, "lots": []}
+            pf["positions"].append(pos)
+        lots = pos.setdefault("lots", [])
+        lots.append({"id": "%s-%d" % (symbol, len(lots) + 1), "date": date, "shares": qty, "cost": cost})
+        pos["shares"] = round(float(pos.get("shares", 0)) + qty, 6)
+        pf["cash"] = round(cash - cost, 2)
+    else:
+        if pos is None or float(pos.get("shares", 0)) + 1e-9 < qty:
+            raise TicketError("cannot record selling %s %s: the portfolio holds %s"
+                              % (_str_num(qty), symbol, pos.get("shares", 0) if pos else 0))
         left = qty
         for lot in sorted(lots, key=lambda l: l.get("date", "")):
             if left <= 1e-9:
