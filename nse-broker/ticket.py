@@ -397,6 +397,10 @@ def risk_verdict(risk, fp, today):
 def status_of(order, risk, state, today, cfg=None):
     """(ready, label, risk_result); risk must have been checked in the current mode."""
     if risk is not None:
+        checked_config = risk.get("config_sha256")
+        current_config = (cfg or {}).get("_config_sha256")
+        if not checked_config or checked_config != current_config:
+            return False, "NOT READY: risk settings changed since the risk check (or the check is old); run nse-risk again", None
         checked_paper = bool(risk.get("paper", True))
         current_paper = bool((cfg or {}).get("paper", True))
         if checked_paper != current_paper:
@@ -544,12 +548,22 @@ def _clock(a):
     return now, today
 
 
+def _config_sha256(path):
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        raw = b""
+    return hashlib.sha256(raw).hexdigest()
+
+
 def _load(a):
     doc = read_json(a.orders, "orders file (run nse-budget, or ticket.py flatten, first)")
     orders = doc.get("orders", doc) if isinstance(doc, dict) else doc
     if not isinstance(orders, list) or not orders:
         raise TicketError("no orders in %s" % a.orders)
     cfg = read_json(a.config, "config", required=False) or {}
+    cfg["_config_sha256"] = _config_sha256(a.config)
     risk = read_json(a.risk, "risk check", required=False)
     state = load_state(a.state)
     now, today = _clock(a)
