@@ -93,6 +93,8 @@ The scanner requires each chart's latest completed daily candle to match the lat
 | `oversold` | RSI 14 (Wilder) under 30 |
 | `oversold_bounce` | RSI 14 was under 30 yesterday and today closed up |
 
+Daily results also carry a `classification`: `momentum_watch` when at least one directional setup is present (20-day breakout, bull flag, MA20 reclaim or oversold bounce), otherwise `oversold_only_watch`. An oversold-only chart is context for further review, never a long-entry signal.
+
 Hits are listed most traded first (price times volume). A flat 14-period RSI is treated as neutral (50), not overbought. A chart with an old latest candle is excluded rather than being presented as a current setup.
 
 ## The opening-range breakout scan (during the session)
