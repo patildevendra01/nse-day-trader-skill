@@ -55,8 +55,11 @@ class Evaluation(unittest.TestCase):
         series = make_series(closes)
         trades, _ = evaluate.evaluate_series(series)
         one = next(t for t in trades if t["horizon"] == 1)
-        self.assertAlmostEqual(one["entry"], series["o"][1] * 0.98)
-        self.assertAlmostEqual(one["exit"], series["c"][1] * 0.98)
+        start = datetime.date(2025, 1, 1)
+        entry_i = (datetime.date.fromisoformat(one["entry_date"]) - start).days
+        exit_i = (datetime.date.fromisoformat(one["exit_date"]) - start).days
+        self.assertAlmostEqual(one["entry"], series["o"][entry_i] * 0.98)
+        self.assertAlmostEqual(one["exit"], series["c"][exit_i] * 0.98)
 
     def test_missing_adjusted_close_is_rejected(self):
         closes = [100 + i * 0.1 for i in range(40)]
