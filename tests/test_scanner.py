@@ -349,6 +349,30 @@ class Daily(unittest.TestCase):
         self.assertEqual(scan.last_completed_session(scan.parse_now("2026-10-30 15:30")), D(2026, 10, 30))
         self.assertEqual(scan.last_completed_session(scan.parse_now("2026-11-09 09:00")), D(2026, 11, 8))
 
+    def test_setup_explanations_include_reason_and_close_based_invalidation(self):
+        now = scan.parse_now("2026-10-30 09:00")
+        hits, _, _ = scan.scan_daily(self.data, self.syms, now, 0, 0)
+        by_symbol = {h["symbol"]: h for h in hits}
+        for hit in hits:
+            self.assertTrue(hit["setup_reasons"], hit["symbol"])
+            self.assertTrue(hit["invalidation_conditions"], hit["symbol"])
+            self.assertEqual(len(hit["setup_reasons"]), len(hit["invalidation_conditions"]))
+        breakout = by_symbol["LT"]
+        self.assertIn("previous 20-session closing high", breakout["setup_reasons"][0])
+        self.assertIn("at or below", breakout["invalidation_conditions"][0])
+        flag = by_symbol["M&M"]
+        self.assertIn("prior 10-session run", flag["setup_reasons"][0])
+        self.assertIn("closing low", flag["invalidation_conditions"][0])
+        reclaim = by_symbol["INFY"]
+        self.assertIn("20-session average", reclaim["setup_reasons"][0])
+        self.assertIn("then-current 20-session average", reclaim["invalidation_conditions"][0])
+        oversold = by_symbol["WIPRO"]
+        self.assertIn("RSI", oversold["setup_reasons"][0])
+        self.assertIn("30 or higher", oversold["invalidation_conditions"][0])
+        bounce = by_symbol["MARUTI"]
+        self.assertIn("Yesterday's RSI", bounce["setup_reasons"][0])
+        self.assertIn("prior close", bounce["invalidation_conditions"][0])
+
     def test_ranking_trend_and_market_regime(self):
         rising = [100.0 + i for i in range(220)]
         falling = [320.0 - i for i in range(220)]
@@ -670,6 +694,8 @@ class Cli(unittest.TestCase):
             self.assertIn("score_reasons", hit)
             self.assertIn("trend", hit)
             self.assertIn("market_regime", hit)
+            self.assertTrue(hit["setup_reasons"])
+            self.assertTrue(hit["invalidation_conditions"])
         mm = next(h for h in doc["hits"] if h["symbol"] == "M&M")
         self.assertEqual((mm["setups"], mm["classification"], mm["price"], mm["close_date"], mm["rsi"], mm["volume"]),
                          (["bull_flag"], "momentum_watch", 3796.25, "2026-10-29", 80.8, 1800000))
