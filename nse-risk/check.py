@@ -36,8 +36,9 @@ What blocks an order (every order):
                 is not a plain NSE equity symbol (RELIANCE.NS is refused: use
                 RELIANCE); a trade-to-trade series (-BE, -BZ, -BL) bought as
                 MIS, because trade-to-trade stocks cannot be traded intraday
-  short         selling more than you hold, unless "allow_short": true
-                (MIS short selling exists in India; this pack does not do it)
+  short         any new short position (selling more than you hold); this pack's
+                portfolio tracker does not support short positions, so
+                "allow_short": true cannot enable them
 
 What blocks an entry (on top):
 
@@ -585,9 +586,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 over = q > held + 1e-9
             else:
                 over = held <= 0
-            if over and not c.get("allow_short"):
-                reasons.append("short: selling more %s than you hold (%s shares); short selling is off. "
-                               "If you bought it, record the fill first (ticket.py fill)" % (sym, _num(held)))
+            if over:
+                reasons.append("short: short entries are not supported by this pack's portfolio tracker; "
+                               "allow_short cannot enable them. Selling more %s than you hold (%s shares) "
+                               "would make the recorded position incorrect" % (sym, _num(held)))
 
         # intraday checks: stop, loss, reward:risk, daily loss, trades, window
         max_loss = risk_ps = rr = stop = target = None
