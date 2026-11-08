@@ -28,20 +28,24 @@ def evaluate_series(series, horizons=HORIZONS, now_utc=None):
     if now_utc is None:
         now_utc = scan.parse_now(None)
     now_ist = scan.to_ist(now_utc)
-    required = ("t", "o", "h", "l", "c")
+    required = ("t", "o", "h", "l", "c", "adjclose")
     if any(not isinstance(series.get(k), list) for k in required):
+        return [], 0
+    if any(len(series[k]) < len(series["t"]) for k in required):
         return [], 0
     rows = {}
     for i, stamp in enumerate(series["t"]):
         try:
             day = scan.ts_to_ist(stamp).date()
-            o, h, lo, c = (series[k][i] for k in ("o", "h", "l", "c"))
-            if any(x is None for x in (o, h, lo, c)):
+            o, h, lo, c, adj = (series[k][i] for k in ("o", "h", "l", "c", "adjclose"))
+            if any(x is None for x in (o, h, lo, c, adj)):
                 continue
-            vals = tuple(float(x) for x in (o, h, lo, c))
+            vals = tuple(float(x) for x in (o, h, lo, c, adj))
             if any(not __import__("math").isfinite(x) or x <= 0 for x in vals):
                 continue
-            rows[day] = {"open": vals[0], "high": vals[1], "low": vals[2], "close": vals[3]}
+            factor = vals[4] / vals[3]
+            rows[day] = {"open": vals[0] * factor, "high": vals[1] * factor,
+                         "low": vals[2] * factor, "close": vals[4]}
         except (IndexError, TypeError, ValueError, OverflowError):
             continue
     # Yahoo may expose today's daily candle before the NSE session closes.
@@ -113,9 +117,16 @@ def summarize(trades):
 def evaluate(data, symbols=None, now_utc=None):
     symbols = list(symbols or sorted(data))
     all_trades, skipped, loaded = [], 0, 0
+    missing_adjustments, invalid_adjustments = [], []
     for symbol in symbols:
         series = data.get(symbol)
         if not series:
+            continue
+        if not isinstance(series.get("adjclose"), list):
+            missing_adjustments.append(symbol)
+            continue
+        if len(series["adjclose"]) < len(series.get("t") or []):
+            invalid_adjustments.append(symbol)
             continue
         loaded += 1
         trades, n_skipped = evaluate_series(series, now_utc=now_utc)
@@ -127,6 +138,9 @@ def evaluate(data, symbols=None, now_utc=None):
         "mode": "offline_daily_setup_evaluation",
         "symbols_requested": len(symbols),
         "symbols_loaded": loaded,
+        "symbols_rejected_missing_adjusted_close": missing_adjustments,
+        "symbols_rejected_incomplete_adjusted_close": invalid_adjustments,
+        "corporate_action_adjustment": "Yahoo adjusted close; each OHLC bar scaled by adjusted-close / raw-close. This incorporates Yahoo's split and dividend adjustments when supplied by the feed.",
         "trade_costs_included": False,
         "entry_rule": "next available daily session open after the signal close",
         "exit_rule": "daily close after 1, 3 or 5 held sessions",
@@ -138,7 +152,7 @@ def evaluate(data, symbols=None, now_utc=None):
         "limitations": [
             "Historical results do not predict future performance.",
             "Current symbol lists can create survivorship bias.",
-            "Daily OHLC data may contain errors, corporate-action adjustments or missing sessions.",
+            "Yahoo adjusted-close data is required; missing or incomplete adjustment arrays are rejected. Adjustment quality and historical corporate-action coverage still depend on Yahoo's feed.",
             "No fees, taxes, slippage, bid-ask spread or liquidity impact are included.",
             "This evaluates daily setups only; it is not an intraday opening-range backtest."
         ]
@@ -165,7 +179,11 @@ def main(argv=None):
             print("Loaded %d of %d requested symbols; %d completed observations; %d skipped for insufficient future data."
                   % (report["symbols_loaded"], report["symbols_requested"], report["trades"],
                      report["skipped_insufficient_future_data"]))
-            print("Entry: next session open. Exit: close after 1, 3 or 5 held sessions. Costs are NOT included.")
+            print("Entry: next session adjusted open. Exit: adjusted close after 1, 3 or 5 held sessions. Costs are NOT included.")
+            if report["symbols_rejected_missing_adjusted_close"]:
+                print("Rejected (no adjusted-close data): %s" % ", ".join(report["symbols_rejected_missing_adjusted_close"]))
+            if report["symbols_rejected_incomplete_adjusted_close"]:
+                print("Rejected (incomplete adjusted-close data): %s" % ", ".join(report["symbols_rejected_incomplete_adjusted_close"]))
             if not report["summary"]:
                 print("No evaluable signals in this data.")
             for row in report["summary"]:
