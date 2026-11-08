@@ -77,7 +77,11 @@ mostly thin.
 ## The daily scan (before the open)
 
 Yahoo's spark endpoint returns closes for 20 symbols a request, so Nifty 500
-takes about 25 requests with the polite 0.3 s pause. Liquidity comes from the
+takes about 25 requests with the polite 0.3 s pause. Daily charts use a 1-year
+range so EMA200 and 20-session relative volume can be calculated when history
+is available. A separate Nifty 50 (`^NSEI`) series supplies market-regime
+context; if that feed is unavailable, the scan continues and marks the regime
+unknown. Liquidity comes from the
 spark meta: last price at least `--min-price` (default ₹20) and last
 session's volume at least `--min-volume`. Run it before the open or after the
 close: during the session the volume is the day's so far, and today's daily
@@ -95,7 +99,7 @@ The scanner requires each chart's latest completed daily candle to match the lat
 
 Daily results also carry a `classification`: `momentum_watch` when at least one directional setup is present (20-day breakout, bull flag, MA20 reclaim or oversold bounce), otherwise `oversold_only_watch`. An oversold-only chart is context for further review, never a long-entry signal.
 
-Hits are listed most traded first (price times volume). A flat 14-period RSI is treated as neutral (50), not overbought. A chart with an old latest candle is excluded rather than being presented as a current setup.
+Hits are ranked by a transparent heuristic score from 0–100, then traded value: setup type (up to 30), EMA50/EMA200 trend (+20), close above EMA50 (+10), relative volume (+10 or +15), RSI momentum (+10), breakout extension (+10 or -5), and Nifty 50 regime (+10 bullish / -8 bearish). Missing EMA or volume history contributes no points rather than being guessed. Each hit includes `score_reasons`, trend, relative volume and market regime so the ranking can be reviewed. This is a prioritization heuristic, not a probability, forecast, or buy signal. A flat 14-period RSI is treated as neutral (50), not overbought. A chart with an old latest candle is excluded rather than being presented as a current setup.
 
 ## Offline evaluation of daily setups
 
