@@ -2,6 +2,7 @@
 """Offline, close-based evaluation of daily scanner setups. No network or orders."""
 import argparse
 import json
+import math
 import os
 import sys
 from collections import defaultdict
@@ -35,7 +36,6 @@ def evaluate_series(series, horizons=HORIZONS, now_utc=None):
         return [], 0
     # Never bridge over a missing adjusted value: doing so would silently
     # change the meaning of "next session" and the holding-period horizon.
-    import math
     for value in series["adjclose"][:len(series["t"])]:
         try:
             if value is None or not math.isfinite(float(value)) or float(value) <= 0:
@@ -123,6 +123,13 @@ def summarize(trades):
     return summary
 
 
+def _valid_positive_number(value):
+    try:
+        return math.isfinite(float(value)) and float(value) > 0
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def evaluate(data, symbols=None, now_utc=None):
     symbols = list(symbols or sorted(data))
     all_trades, skipped, loaded = [], 0, 0
@@ -134,7 +141,9 @@ def evaluate(data, symbols=None, now_utc=None):
         if not isinstance(series.get("adjclose"), list):
             missing_adjustments.append(symbol)
             continue
-        if len(series["adjclose"]) < len(series.get("t") or []):
+        if len(series["adjclose"]) < len(series.get("t") or []) or any(
+                value is None or not _valid_positive_number(value)
+                for value in series["adjclose"][:len(series.get("t") or [])]):
             invalid_adjustments.append(symbol)
             continue
         loaded += 1
