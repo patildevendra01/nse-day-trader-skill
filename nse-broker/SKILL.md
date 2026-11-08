@@ -199,8 +199,8 @@ money). If the connector has no order tool, stay in paper mode.
 5. Record what happened: `ticket.py result --index N --status placed
    --broker-id <id> --filled-qty Q --filled-price P`, or `--status denied`, or
    `--status failed` with `--note`. A failed order is not retried without a new
-   check and a new yes. The log keeps the entry's max loss for nse-risk's daily
-   limit.
+   check and a new yes. After a fill is recorded, the daily loss is recalculated from the broker-confirmed
+   cumulative average fill price, filled quantity and stop; later partial fills update it.
 6. Do NOT use exit quantities from the original ticket. Record the actual fill
    with `result --status placed --filled-qty Q --filled-price P`. The exits
    command rejects requests unless Q exactly matches that recorded fill. Cancel
