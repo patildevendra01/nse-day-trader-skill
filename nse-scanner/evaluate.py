@@ -20,11 +20,11 @@ SETUP_KEYS = tuple(key for key, _ in scan.SETUPS)
 
 
 def evaluate_series(series, horizons=HORIZONS, now_utc=None):
-    """Evaluate close-generated signals using next-session open entry.
+    """Evaluate adjusted-close signals using next-session adjusted-open entry.
 
-    Horizon 1 exits at the next session close; horizon 3/5 exits at that
-    session's close. High/low excursion includes each held session. Signals
-    without enough future bars or valid OHLC are counted as skipped.
+    Horizon 1 exits at the next session adjusted close; horizon 3/5 exit at
+    that session's adjusted close. High/low excursion uses adjusted OHLC.
+    Missing adjustment data rejects the series rather than bridging a gap.
     """
     if now_utc is None:
         now_utc = scan.parse_now(None)
@@ -48,10 +48,10 @@ def evaluate_series(series, horizons=HORIZONS, now_utc=None):
             day = scan.ts_to_ist(stamp).date()
             o, h, lo, c, adj = (series[k][i] for k in ("o", "h", "l", "c", "adjclose"))
             if any(x is None for x in (o, h, lo, c, adj)):
-                continue
+                return [], 0
             vals = tuple(float(x) for x in (o, h, lo, c, adj))
-            if any(not __import__("math").isfinite(x) or x <= 0 for x in vals):
-                continue
+            if any(not math.isfinite(x) or x <= 0 for x in vals):
+                return [], 0
             factor = vals[4] / vals[3]
             rows[day] = {"open": vals[0] * factor, "high": vals[1] * factor,
                          "low": vals[2] * factor, "close": vals[4]}
@@ -160,8 +160,8 @@ def evaluate(data, symbols=None, now_utc=None):
         "symbols_rejected_incomplete_adjusted_close": invalid_adjustments,
         "corporate_action_adjustment": "Yahoo adjusted close; each OHLC bar scaled by adjusted-close / raw-close. This incorporates Yahoo's split and dividend adjustments when supplied by the feed.",
         "trade_costs_included": False,
-        "entry_rule": "next available daily session open after the signal close",
-        "exit_rule": "daily close after 1, 3 or 5 held sessions",
+        "entry_rule": "next available daily session adjusted open after the signal close",
+        "exit_rule": "adjusted daily close after 1, 3 or 5 held sessions",
         "returns_are_predictions": False,
         "trades": len(all_trades),
         "skipped_insufficient_future_data": skipped,
