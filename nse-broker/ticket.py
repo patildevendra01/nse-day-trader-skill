@@ -505,12 +505,19 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
         if not budget:
             raise TicketError("no %s yet and no budget in the config to start it from" % portfolio_path)
         pf = {"cash": float(budget), "positions": []}
+    symbol = bare(symbol)
+    qty, price = float(qty), float(price)
     if fill_id:
         applied = pf.setdefault("applied_fill_ids", [])
         if fill_id in applied:
+            prior = (pf.get("applied_fill_records") or {}).get(fill_id)
+            if prior is not None:
+                same = (bare(prior.get("symbol")) == symbol and prior.get("side") == side
+                        and _f(prior.get("qty")) == qty and _f(prior.get("price")) == price
+                        and prior.get("date") == date)
+                if not same:
+                    raise TicketError("this fill ID was already applied with different fill details")
             return pf
-    symbol = bare(symbol)
-    qty, price = float(qty), float(price)
     if not math.isfinite(qty) or qty <= 0 or abs(qty - round(qty)) > 1e-9:
         raise TicketError("a fill needs a positive whole-share quantity")
     if not math.isfinite(price) or price <= 0:
@@ -549,6 +556,8 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
         pf["cash"] = round(float(pf.get("cash", 0)) + cost, 2)
     if fill_id:
         pf.setdefault("applied_fill_ids", []).append(fill_id)
+        pf.setdefault("applied_fill_records", {})[fill_id] = {
+            "symbol": symbol, "side": side, "qty": qty, "price": price, "date": date}
     write_json(portfolio_path, pf)
     return pf
 
@@ -866,6 +875,16 @@ def cmd_fill(a):
         return 0
     pf_before = read_json(a.portfolio, "portfolio", required=False) or {}
     already_applied = fill_id in pf_before.get("applied_fill_ids", []) if fill_id else False
+    if already_applied:
+        prior = (pf_before.get("applied_fill_records") or {}).get(fill_id)
+        if prior is None:
+            raise TicketError("this fill ID is already in the portfolio but has no detail record; "
+                              "check the portfolio and broker statement before retrying")
+        same = (bare(prior.get("symbol")) == bare(a.symbol) and prior.get("side") == a.side
+                and _f(prior.get("qty")) == qty and _f(prior.get("price")) == price
+                and prior.get("date") == date)
+        if not same:
+            raise TicketError("this --fill-id was already used with different fill details")
     pf = apply_fill(a.portfolio, cfg, a.symbol, a.side, qty, price, date, fill_id=fill_id or None)
     if not already_applied:
         if fill_id:
