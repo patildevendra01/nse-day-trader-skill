@@ -294,6 +294,9 @@ class Daily(unittest.TestCase):
                 self.assertLess(h["rsi"], 30, h["symbol"])
         names = {h["symbol"] for h in hits if "oversold" in h["setups"]}
         self.assertEqual(names, {"WIPRO", "ONGC", "COALINDIA", "IDEA"})
+        by_symbol = {h["symbol"]: h for h in hits}
+        self.assertEqual(by_symbol["WIPRO"]["classification"], "oversold_only_watch")
+        self.assertEqual(by_symbol["LT"]["classification"], "momentum_watch")
 
     def test_the_in_progress_bar_is_dropped(self):
         before = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-30 09:00"), 0, 0)
