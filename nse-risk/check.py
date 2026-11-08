@@ -525,8 +525,6 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 if live and ref_from == "price" and plan_entry and live > plan_entry + CENT:
                     info.append("%s last %s is above the plan's entry %s: the risk is measured from %s"
                                 % (sym, _p(ref), _p(plan_entry), _p(ref)))
-            elif bare(sym) in prices:
-                ref, ref_from = prices[bare(sym)], "stale price"
         if plan_entry and live is None and bare(sym) in prices and price_times is not None and typ == "market":
             warns.append("the %s price in nse/prices.json is older than %d minutes: not used"
                          % (sym, FRESH_MINUTES))
@@ -808,6 +806,12 @@ def main(argv=None):
         prices, times = load_prices(pdoc)
         state = read_json(a.state, "broker state", required=False)
         res = check(orders, cfg, portfolio, prices, state, a.today, now, times)
+        try:
+            with open(a.config, "rb") as fh:
+                config_bytes = fh.read()
+        except OSError:
+            config_bytes = b""
+        res["config_sha256"] = hashlib.sha256(config_bytes).hexdigest()
         if pdoc.get("as_of"):
             res["prices_as_of"] = pdoc["as_of"]
         if not a.no_write:
