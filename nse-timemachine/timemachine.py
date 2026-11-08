@@ -265,11 +265,10 @@ def chart_result(text, sym):
 
 
 def parse_bars(result, now_utc):
-    """Yahoo chart result -> (meta, bars, dropped). Regular-session 5-min bars only,
-    oldest first. Dropped: bars with a missing price, bars off the 5-minute grid
-    (the live tick, e.g. 10:49:45), bars not complete yet (now < start + 5 min,
-    where now is the earlier of --now and the data's own regularMarketTime), and
-    bars outside 09:15 to 15:30 India time."""
+    """Yahoo chart result -> (meta, bars, dropped). Regular-session 5-min bars,
+    plus the 2026-11-08 Muhurat window, oldest first. Slots are aligned to the
+    regular-session clock so afternoon bars can be compared across sessions.
+    Incomplete, off-grid, missing-price and out-of-session bars are dropped."""
     meta = result.get("meta") or {}
     stamps = result.get("timestamp") or []
     q = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
