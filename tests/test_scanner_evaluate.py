@@ -160,7 +160,7 @@ class Evaluation(unittest.TestCase):
             handle.write(content)
             path = handle.name
         try:
-            with self.assertRaises(scan.ScanError):
+            with self.assertRaises(evaluate.scan.ScanError):
                 evaluate.load_universe_history(path)
         finally:
             os.unlink(path)
