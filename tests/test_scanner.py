@@ -371,7 +371,7 @@ class Daily(unittest.TestCase):
         self.assertIn("30 or higher", oversold["invalidation_conditions"][0])
         bounce = by_symbol["MARUTI"]
         self.assertIn("Yesterday's RSI", bounce["setup_reasons"][0])
-        self.assertIn("prior close", bounce["invalidation_conditions"][0])
+        self.assertIn("higher-close condition", bounce["invalidation_conditions"][0])
 
     def test_ranking_trend_and_market_regime(self):
         rising = [100.0 + i for i in range(220)]
