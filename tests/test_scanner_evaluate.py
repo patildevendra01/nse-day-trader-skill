@@ -207,6 +207,25 @@ class Evaluation(unittest.TestCase):
         self.assertTrue(quality["possible_date_gaps"])
         self.assertIn("possible_date_gaps", quality)
 
+    def test_summary_marks_very_small_samples(self):
+        trades = [{"setup": "breakout_20d", "horizon": 1, "return_pct": 2.0}]
+        row = evaluate.summarize(trades)[0]
+        self.assertEqual(row["sample_status"], "very_small")
+        self.assertIn("Very small", row["sample_warning"])
+
+    def test_summary_marks_limited_samples(self):
+        trades = [{"setup": "breakout_20d", "horizon": 1, "return_pct": 1.0}
+                  for _ in range(30)]
+        row = evaluate.summarize(trades)[0]
+        self.assertEqual(row["sample_status"], "limited")
+
+    def test_summary_marks_larger_descriptive_samples_without_claiming_significance(self):
+        trades = [{"setup": "breakout_20d", "horizon": 1, "return_pct": 1.0}
+                  for _ in range(100)]
+        row = evaluate.summarize(trades)[0]
+        self.assertEqual(row["sample_status"], "larger_sample")
+        self.assertIn("not proof of statistical significance", row["sample_warning"])
+
     def test_evaluate_is_offline_and_reports_limitations(self):
         data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
         report = evaluate.evaluate(data)
