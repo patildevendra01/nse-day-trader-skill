@@ -18,13 +18,16 @@ HORIZONS = (1, 3, 5)
 SETUP_KEYS = tuple(key for key, _ in scan.SETUPS)
 
 
-def evaluate_series(series, horizons=HORIZONS):
+def evaluate_series(series, horizons=HORIZONS, now_utc=None):
     """Evaluate close-generated signals using next-session open entry.
 
     Horizon 1 exits at the next session close; horizon 3/5 exits at that
     session's close. High/low excursion includes each held session. Signals
     without enough future bars or valid OHLC are counted as skipped.
     """
+    if now_utc is None:
+        now_utc = scan.parse_now(None)
+    now_ist = scan.to_ist(now_utc)
     required = ("t", "o", "h", "l", "c")
     if any(not isinstance(series.get(k), list) for k in required):
         return [], 0
@@ -41,6 +44,12 @@ def evaluate_series(series, horizons=HORIZONS):
             rows[day] = {"open": vals[0], "high": vals[1], "low": vals[2], "close": vals[3]}
         except (IndexError, TypeError, ValueError, OverflowError):
             continue
+    # Yahoo may expose today's daily candle before the NSE session closes.
+    # Exclude that partial candle so it cannot create a signal or outcome.
+    today_session = scan.session(now_ist.date())
+    if today_session and now_ist.time() < today_session[1]:
+        rows.pop(now_ist.date(), None)
+
     days = sorted(rows)
     bars = [rows[d] for d in days]
     closes = []
@@ -101,7 +110,7 @@ def summarize(trades):
     return summary
 
 
-def evaluate(data, symbols=None):
+def evaluate(data, symbols=None, now_utc=None):
     symbols = list(symbols or sorted(data))
     all_trades, skipped, loaded = [], 0, 0
     for symbol in symbols:
@@ -109,7 +118,7 @@ def evaluate(data, symbols=None):
         if not series:
             continue
         loaded += 1
-        trades, n_skipped = evaluate_series(series)
+        trades, n_skipped = evaluate_series(series, now_utc=now_utc)
         for trade in trades:
             trade["symbol"] = symbol
         all_trades.extend(trades)
