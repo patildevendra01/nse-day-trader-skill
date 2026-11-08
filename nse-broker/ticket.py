@@ -734,7 +734,7 @@ def cmd_result(a):
         new["filled_qty"] = filled_qty
         new["filled_price"] = price
     if a.status == "placed" and filled_qty is not None:
-        fill_id = "entry:%s:%d" % (fp, filled_qty)
+        fill_id = "entry:%s:%s:%d" % (today, fp, filled_qty)
         apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], filled_qty, price, today, fill_id=fill_id)
     state["orders"].append(new)
     if a.status == "placed" and filled_qty is not None:
@@ -787,7 +787,7 @@ def cmd_reconcile_fill(a):
     new.update(at=ist_iso(now), date=today, status="placed", filled_qty=new_qty,
                filled_price=avg_price, fill_update=True, fill_delta_qty=delta_qty,
                fill_delta_price=round(delta_price, 8))
-    fill_id = "entry:%s:%d" % (fp, new_qty)
+    fill_id = "entry:%s:%s:%d" % (today, fp, new_qty)
     apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], delta_qty, delta_price, today, fill_id=fill_id)
     state["orders"].append(new)
     _append_fill_log(state, now, today, rec["symbol"], rec["side"], delta_qty, delta_price)
