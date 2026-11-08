@@ -165,6 +165,25 @@ class Evaluation(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_universe_history_quality_reports_missing_requested_charts(self):
+        data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
+        history = {
+            "TEST": [(datetime.date(2025, 1, 1), None)],
+            "MISSING": [(datetime.date(2025, 1, 1), None)],
+        }
+        quality = evaluate.universe_history_quality(history, data, ["TEST", "MISSING"])
+        self.assertEqual(quality["status"], "review_required")
+        self.assertEqual(quality["requested_membership_symbols_without_chart_data"], ["MISSING"])
+        self.assertEqual(quality["loaded_symbols_without_membership_history"], [])
+        self.assertFalse(quality["completeness_verified"])
+
+    def test_universe_history_quality_reports_loaded_symbols_without_membership(self):
+        data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
+        history = {"OTHER": [(datetime.date(2025, 1, 1), None)]}
+        quality = evaluate.universe_history_quality(history, data, ["TEST"])
+        self.assertEqual(quality["loaded_symbols_without_membership_history"], ["TEST"])
+        self.assertEqual(quality["status"], "review_required")
+
     def test_evaluate_is_offline_and_reports_limitations(self):
         data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
         report = evaluate.evaluate(data)
