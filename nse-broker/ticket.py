@@ -232,7 +232,7 @@ def entry_params(order):
     return p
 
 
-def legs(order, cfg=None):
+def legs(order, cfg=None, quantity=None):
     """[(role, params)]: the entry, then (for an entry with legs) the stop-loss and the take-profit.
     The two exit legs are sells of the same quantity, placed ONLY after the entry has filled."""
     out = [("entry", entry_params(order))]
@@ -241,7 +241,7 @@ def legs(order, cfg=None):
     base = entry_params(order)
     opposite = "SELL" if base["transaction_type"] == "BUY" else "BUY"
     common = {"variety": "regular", "exchange": base["exchange"], "tradingsymbol": base["tradingsymbol"],
-              "transaction_type": opposite, "quantity": base["quantity"], "product": base["product"],
+              "transaction_type": opposite, "quantity": int(quantity if quantity is not None else base["quantity"]), "product": base["product"],
               "validity": "DAY"}
     stop_type = str((cfg or {}).get("stop_type") or "SL-M").upper()
     if order.get("stop_loss") is not None:
@@ -453,14 +453,16 @@ def render(order, idx, total, cfg, risk, state, today):
         lines.append("  Claude places it with your broker connector's order tool, one leg at a time, using these")
         lines.append("  parameters (Kite Connect names; map them to the connector's own fields, and read the")
         lines.append("  connector's tool list rather than guessing names):")
-    for role, params in legs(order, cfg):
+    for role, params in legs(order, cfg)[:1]:
         lines.append("  %s:" % role)
         for l in json.dumps(params, indent=2).splitlines():
             lines.append("    " + l)
     if has_legs(order):
-        lines.append("  Place the stop-loss and take-profit only AFTER the entry has filled: a sell placed first would")
-        lines.append("  open a short MIS position. Most Indian brokers have no intraday bracket order, so these are two")
-        lines.append("  separate orders and they do NOT cancel each other: when one fills, cancel the other yourself.")
+        lines.append("  Exit orders are NOT shown yet. After the entry fills, check the broker's actual filled")
+        lines.append("  quantity, then run: ticket.py exits --index %d --filled-qty Q" % idx)
+        lines.append("  Never use the original requested quantity unless the broker confirms it all filled.")
+        lines.append("  The stop-loss and target are separate orders and do NOT cancel each other; when one fills,")
+        lines.append("  cancel the other yourself.")
     if ready:
         lines.append("  Reply \"yes\" to approve this ticket (the entry and its two exit orders), or \"no\" to skip it.")
         if not paper:
@@ -474,7 +476,8 @@ def ticket_json(order, idx, cfg, risk, state, today):
     return {"index": idx, "ready": ready, "status": label, "plain": plain(order),
             "fingerprint": fingerprint(order), "paper": bool(cfg.get("paper", True)),
             "broker": cfg.get("broker", "zerodha"), "tool": "your broker connector's order-placement tool",
-            "tool_input": tool_input(order), "legs": [{"role": r, "params": p} for r, p in legs(order, cfg)],
+            "tool_input": tool_input(order), "legs": [{"role": r, "params": p} for r, p in legs(order, cfg)[:1]],
+            "exits_available_after_fill": has_legs(order),
             "why": order.get("why", ""), "has_legs": has_legs(order), "max_loss": loss, "stop": stop}
 
 
@@ -641,6 +644,35 @@ def cmd_decline(a):
     return 0
 
 
+def _confirmed_fill_qty(value, requested):
+    qty = _f(value)
+    want = _f(requested)
+    if qty is None or not math.isfinite(qty) or qty <= 0 or abs(qty - round(qty)) > 1e-9:
+        raise TicketError("--filled-qty must be the positive whole-share quantity confirmed by the broker")
+    if want is None or qty > want:
+        raise TicketError("--filled-qty cannot exceed the requested order quantity (%s)" % _str_num(requested))
+    return int(round(qty))
+
+
+def cmd_exits(a):
+    orders, cfg, risk, state, today, now = _load(a)
+    order = _pick(orders, a.index)
+    if not has_legs(order):
+        raise TicketError("this order has no stop-loss or take-profit legs")
+    rec = latest(state, fingerprint(order), today)
+    if not rec or rec.get("status") != "placed" or rec.get("kind") != "entry":
+        raise TicketError("record the entry as placed first; exits are only for a filled entry")
+    qty = _confirmed_fill_qty(a.filled_qty, order.get("qty"))
+    print("EXIT ORDERS ONLY for %s: %s shares." % (bare(order.get("symbol")), qty))
+    print("Use this quantity only if it matches the broker's current filled position.")
+    for role, params in legs(order, cfg, quantity=qty)[1:]:
+        print("  %s:" % role)
+        for line in json.dumps(params, indent=2).splitlines():
+            print("    " + line)
+    print("These are separate orders. When one exit fills, cancel the other immediately.")
+    return 0
+
+
 def cmd_result(a):
     orders, cfg, risk, state, today, now = _load(a)
     order = _pick(orders, a.index)
@@ -648,6 +680,16 @@ def cmd_result(a):
     rec = latest(state, fp, today)
     if not rec or rec.get("status") != "approved":
         raise TicketError("order %d has no yes recorded today; a result can only follow an approval" % a.index)
+    if bool(a.filled_qty) != bool(a.filled_price):
+        raise TicketError("--filled-qty and --filled-price must be supplied together")
+    filled_qty = None
+    if a.filled_qty is not None:
+        if a.status != "placed":
+            raise TicketError("fill details can only be recorded with --status placed")
+        filled_qty = _confirmed_fill_qty(a.filled_qty, rec.get("qty"))
+        price = _f(a.filled_price)
+        if price is None or not math.isfinite(price) or price <= 0:
+            raise TicketError("--filled-price must be a positive number")
     new = {"at": ist_iso(now), "date": today, "index": a.index, "fingerprint": fp, "symbol": rec["symbol"],
            "side": rec["side"], "plain": rec["plain"], "status": a.status}
     for k in ("qty", "kind", "max_loss", "stop"):
@@ -659,19 +701,28 @@ def cmd_result(a):
         new["broker_order_id"] = a.broker_id
     if a.note:
         new["note"] = a.note
+    if filled_qty is not None:
+        new["filled_qty"] = filled_qty
+        new["filled_price"] = price
     state["orders"].append(new)
     write_json(a.state, state)
     print("Recorded order %d as %s." % (a.index, a.status))
-    if a.status == "placed" and a.filled_qty and a.filled_price:
-        apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], a.filled_qty, a.filled_price, today)
-        log_fill(a.state, now, today, rec["symbol"], rec["side"], a.filled_qty, a.filled_price)
+    if a.status == "placed" and filled_qty is not None:
+        apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], filled_qty, price, today)
+        log_fill(a.state, now, today, rec["symbol"], rec["side"], filled_qty, price)
         print("Added the fill to %s." % a.portfolio)
     elif a.status == "placed":
         print("When it fills, record it: ticket.py fill --symbol %s --side %s --qty Q --price P"
               % (rec["symbol"], rec["side"]))
     if a.status == "placed" and rec.get("kind") == "entry" and has_legs(order):
-        print("Now place the stop-loss and the take-profit (they only exist once the entry has filled). When "
-              "either fills, record that sell the same way and cancel the other one.")
+        if filled_qty is not None:
+            print("Entry fill recorded: %d shares. Confirm the broker's current position, then generate exits:"
+                  % filled_qty)
+            print("  ticket.py exits --index %d --filled-qty %d" % (a.index, filled_qty))
+        else:
+            print("Do NOT place exits yet. Record the actual fill with --filled-qty Q and --filled-price P,")
+            print("then confirm the broker's current position and run ticket.py exits --index %d --filled-qty Q."
+                  % a.index)
     return 0
 
 
@@ -777,6 +828,10 @@ def main(argv=None):
     common(p)
     p.add_argument("--index", type=int)
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("exits", help="render exit orders for the broker-confirmed filled quantity only")
+    common(p)
+    p.add_argument("--index", type=int, required=True)
+    p.add_argument("--filled-qty", required=True)
     p = sub.add_parser("approve", help="record the user's explicit yes for one order")
     common(p)
     p.add_argument("--index", type=int, required=True)
@@ -821,8 +876,8 @@ def main(argv=None):
         ap.print_help()
         return 1
     try:
-        return {"show": cmd_show, "approve": cmd_approve, "decline": cmd_decline, "result": cmd_result,
-                "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
+        return {"show": cmd_show, "exits": cmd_exits, "approve": cmd_approve, "decline": cmd_decline,
+                "result": cmd_result, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1
