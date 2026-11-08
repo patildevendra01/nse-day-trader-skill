@@ -321,11 +321,6 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         series = data.get(symbol)
         if not series:
             continue
-        quality = inspect_series_quality(series)
-        data_quality[symbol] = quality
-        if quality["errors"]:
-            rejected_data_quality.append(symbol)
-            continue
         if not isinstance(series.get("adjclose"), list):
             missing_adjustments.append(symbol)
             continue
@@ -333,6 +328,11 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
                 value is None or not _valid_positive_number(value)
                 for value in series["adjclose"][:len(series.get("t") or [])]):
             invalid_adjustments.append(symbol)
+            continue
+        quality = inspect_series_quality(series)
+        data_quality[symbol] = quality
+        if quality["errors"]:
+            rejected_data_quality.append(symbol)
             continue
         loaded += 1
         trades, n_skipped = evaluate_series(series, now_utc=now_utc,
