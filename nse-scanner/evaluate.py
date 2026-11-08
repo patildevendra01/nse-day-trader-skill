@@ -454,7 +454,10 @@ def main(argv=None):
                 if quality["requested_membership_symbols_without_chart_data"]:
                     print("Requested historical members missing chart data: %s" % ", ".join(quality["requested_membership_symbols_without_chart_data"]))
                 if quality["membership_intervals_outside_chart_date_range"]:
-                    print("Membership intervals outside available chart dates: %d" % len(quality["membership_intervals_outside_chart_date_range"]))
+                    print("Membership intervals outside combined chart dates: %d" % len(quality["membership_intervals_outside_chart_date_range"]))
+                if quality["per_symbol_chart_coverage_gaps"]:
+                    print("WARNING: %d per-symbol membership/chart coverage gap(s); inspect JSON for affected symbols and dates."
+                          % len(quality["per_symbol_chart_coverage_gaps"]))
             else:
                 print("WARNING: no point-in-time universe supplied; results may have survivorship bias.")
             if report["symbols_rejected_missing_adjusted_close"]:
