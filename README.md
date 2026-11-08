@@ -67,13 +67,15 @@ email, no sign-up.
 
 ## The India rules it encodes
 
-- **Hours:** pre-open auction 09:00 to 09:15 (no entries), trading 09:15 to
-  15:30 IST. 75 five-minute bars a session. No half-days. IST is UTC+05:30,
-  with no daylight saving.
-- **Calendar:** 2026 NSE holidays are built in (16 weekday closures, such as
-  2026-10-20 Dussehra). The Diwali Muhurat evening session (2026-11-08, a
-  Sunday) is treated as closed. For 2027 the tools say the holiday list is not
-  known and tell you to check nseindia.com.
+- **Hours:** regular sessions have pre-open auction 09:00 to 09:15 (no entries)
+  and continuous trading 09:15 to 15:30 IST (75 five-minute bars). The special
+  Muhurat session on 2026-11-08 ran 14:20 to 15:15 IST; its 15-minute opening
+  range ended at 14:35, new entries were limited to 14:40–15:00, and positions
+  were required to be flat by 15:10. IST is UTC+05:30, with no daylight saving.
+- **Calendar:** 2026 NSE weekday holidays are built in. The special Diwali
+  Muhurat session on Sunday 2026-11-08 is explicitly supported by the scanner,
+  entry, exit, risk and alert tools. The 2027 holiday list is not built in;
+  check the official NSE calendar before using the tools for 2027.
 - **Series:** EQ only. BE and BZ are trade-to-trade (no intraday).
 - **Symbols:** bare NSE symbols (RELIANCE, M&M, BAJAJ-AUTO); Yahoo gets
   `SYMBOL.NS` with `&` URL-encoded.
@@ -82,8 +84,9 @@ email, no sign-up.
   Bracket orders are discontinued at most brokers, so `/nse-broker` makes an
   entry ticket plus a separate stop-loss and take-profit ticket and tells you
   to cancel the other leg when one fills.
-- **Square-off:** default flat-by 15:15 IST; brokers often auto square-off
-  MIS between 15:15 and 15:25 and charge for it.
+- **Square-off:** regular-session default flat-by is 15:15 IST. The 2026
+  Muhurat session uses a stricter 15:10 flat-by time. Brokers often auto
+  square-off MIS between 15:15 and 15:25 and may charge for it.
 - **No PDT rule** applies in India.
 - **Costs** (brokerage, STT, exchange charges, SEBI fee, stamp duty, GST) are
   printed as an **estimate**. Check your broker's contract note.
@@ -95,7 +98,7 @@ what the last one wrote:
 
 ```
 scanner -> news -> entry -> exit -> timemachine -> budget -> risk -> broker   (one trade)
-alerts: stop, target, flat by 15:15                                           (while it is open)
+alerts: stop, target, flat by the session-specific cutoff                     (while it is open)
 news / analyst / deals                                                        (on a schedule)
 ```
 
@@ -124,7 +127,8 @@ Prices are synthetic.
 8. **`/nse-broker`** shows the tickets in plain words. You type yes for that
    exact order. Claude calls your broker connector (Zerodha's Kite MCP as the
    worked example), and Claude's own "Allow once / Deny" card asks again.
-9. **`/nse-alerts`** rings on the stop, the target and at 15:15 to flatten.
+9. **`/nse-alerts`** rings on the stop, the target and at the session's
+   flat-by time (15:15 regular session; 15:10 on the 2026 Muhurat session).
 
 ## The tools
 
@@ -142,7 +146,7 @@ python3 nse-timemachine/timemachine.py run --write                  # 10,000 rep
 python3 nse-budget/size.py --write                                  # -> nse/orders.json
 python3 nse-risk/check.py                                           # PASS / BLOCK per order
 python3 nse-broker/ticket.py show                                   # the tickets, READY or not
-python3 nse-alerts/alerts.py add --from-plan                        # stop, target, flat by 15:15
+python3 nse-alerts/alerts.py add --from-plan                        # stop, target, session-specific flat-by
 python3 nse-alerts/alerts.py check                                  # rings what hit, once
 python3 nse-analyst/results.py RELIANCE                             # quarters, YoY, QoQ, EPS
 python3 nse-deals/deals.py --watch "Vanguard"                       # new bulk and block deals
