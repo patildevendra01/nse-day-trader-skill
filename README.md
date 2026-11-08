@@ -74,8 +74,11 @@ email, no sign-up.
   were required to be flat by 15:10. IST is UTC+05:30, with no daylight saving.
 - **Calendar:** 2026 NSE weekday holidays are built in. The special Diwali
   Muhurat session on Sunday 2026-11-08 is explicitly supported by the scanner,
-  entry, exit, risk and alert tools. The 2027 holiday list is not built in;
-  check the official NSE calendar before using the tools for 2027.
+  entry, exit, risk and alert tools. The Time Machine is still regular-session-only:
+  its replay pool uses full 09:15–15:30 sessions and excludes short or special
+  sessions, including Muhurat. Do not use it to validate a Muhurat-session trade.
+  The 2027 holiday list is not built in; check the official NSE calendar before
+  using the tools for 2027.
 - **Series:** EQ only. BE and BZ are trade-to-trade (no intraday).
 - **Symbols:** bare NSE symbols (RELIANCE, M&M, BAJAJ-AUTO); Yahoo gets
   `SYMBOL.NS` with `&` URL-encoded.
