@@ -437,17 +437,18 @@ class IntradayChecks(unittest.TestCase):
         self.assertEqual(verdicts(res), ["PASS"])
         self.assertNotIn("day_trades_5d", res["today"])
 
-    def test_a_short_entry_when_allowed(self):
+    def test_short_entries_stay_blocked_even_when_config_allows_them(self):
         o = reliance(side="sell", stop_loss=1453.65, take_profit=1411.55)
-        res = check.check([o], cfg(), prices={"RELIANCE": 1432.60}, now=at(NOW))
-        self.assertIn("short: selling more RELIANCE than you hold (0 shares); short selling is off", reasons(res))
-        res = check.check([o], cfg(allow_short=True), prices={"RELIANCE": 1432.60}, now=at(NOW))
-        r = res["results"][0]
-        self.assertEqual((r["verdict"], r["kind"], r["max_loss"]), ("PASS", "entry", 484.15), r["reasons"])
+        for settings in (cfg(), cfg(allow_short=True)):
+            res = check.check([o], settings, prices={"RELIANCE": 1432.60}, now=at(NOW))
+            r = res["results"][0]
+            self.assertEqual((r["verdict"], r["kind"], r["max_loss"]), ("BLOCK", "entry", 484.15))
+            self.assertIn("short entries are not supported", " ".join(r["reasons"]))
+            self.assertIn("allow_short cannot enable them", " ".join(r["reasons"]))
 
     def test_short_entry_uses_lower_of_plan_and_fresh_price_for_risk(self):
         o = reliance(side="sell", stop_loss=1453.65, take_profit=1411.55)
-        res = check.check([o], cfg(allow_short=True), prices={"RELIANCE": 1420.00}, now=at(NOW))
+        res = check.check([o], cfg(), prices={"RELIANCE": 1420.00}, now=at(NOW))
         r = res["results"][0]
         self.assertEqual(r["entry_ref"], 1420.00)
         self.assertEqual(r["entry_ref_from"], "price")
