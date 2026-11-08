@@ -540,8 +540,23 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
         if pos is None or float(pos.get("shares", 0)) + 1e-9 < qty:
             raise TicketError("cannot record selling %s %s: the portfolio holds %s"
                               % (_str_num(qty), symbol, pos.get("shares", 0) if pos else 0))
+        lots = pos.get("lots", [])
+        try:
+            lot_shares = sum(float(lot["shares"]) for lot in lots)
+            valid_lots = all(math.isfinite(float(lot["shares"])) and float(lot["shares"]) > 0
+                             and math.isfinite(float(lot["cost"])) and float(lot["cost"]) >= 0
+                             for lot in lots)
+            position_shares = float(pos.get("shares", 0))
+        except (KeyError, TypeError, ValueError):
+            valid_lots = False
+            lot_shares = 0.0
+            position_shares = 0.0
+        if (not valid_lots or not math.isfinite(position_shares)
+                or abs(lot_shares - position_shares) > 1e-6):
+            raise TicketError("portfolio integrity check failed for %s: position shares do not match valid lot records; "
+                              "reconcile the portfolio before recording a sale" % symbol)
         left = qty
-        for lot in sorted(pos.get("lots", []), key=lambda l: l.get("date", "")):
+        for lot in sorted(lots, key=lambda l: l.get("date", "")):
             if left <= 1e-9:
                 break
             take = min(left, float(lot["shares"]))
