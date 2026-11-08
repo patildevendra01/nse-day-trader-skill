@@ -499,8 +499,11 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
         pf = {"cash": float(budget), "positions": []}
     symbol = bare(symbol)
     qty, price = float(qty), float(price)
-    if qty <= 0 or price <= 0:
-        raise TicketError("a fill needs a positive qty and price")
+    if not math.isfinite(qty) or qty <= 0 or abs(qty - round(qty)) > 1e-9:
+        raise TicketError("a fill needs a positive whole-share quantity")
+    if not math.isfinite(price) or price <= 0:
+        raise TicketError("a fill needs a positive finite price")
+    qty = int(round(qty))
     cost = round(qty * price, 2)
     pos = None
     for p in pf.setdefault("positions", []):
