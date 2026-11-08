@@ -627,8 +627,9 @@ def cmd_approve(a):
         print("Claude's card shows Allow once / Deny. Then: ticket.py result --index %d --status "
               "placed|denied|failed" % a.index)
         if has_legs(order):
-            print("After the entry fills, place the stop-loss and take-profit legs shown by ticket.py show "
-                  "(each behind its own Allow once).")
+            print("After the entry fills, check the broker's actual position, then generate exits with:")
+            print("  ticket.py exits --index %d --filled-qty Q" % a.index)
+            print("Only place exits for the shares actually held; each live exit needs its own Allow once.")
     return 0
 
 
@@ -723,6 +724,7 @@ def cmd_result(a):
             print("Do NOT place exits yet. Record the actual fill with --filled-qty Q and --filled-price P,")
             print("then confirm the broker's current position and run ticket.py exits --index %d --filled-qty Q."
                   % a.index)
+        print("When either exit fills, cancel the other immediately.")
     return 0
 
 
