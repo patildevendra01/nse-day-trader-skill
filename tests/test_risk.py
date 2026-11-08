@@ -441,9 +441,18 @@ class IntradayChecks(unittest.TestCase):
         o = reliance(side="sell", stop_loss=1453.65, take_profit=1411.55)
         res = check.check([o], cfg(), prices={"RELIANCE": 1432.60}, now=at(NOW))
         self.assertIn("short: selling more RELIANCE than you hold (0 shares); short selling is off", reasons(res))
-        res = check.check([o], cfg(allow_short=True), now=at(NOW))
+        res = check.check([o], cfg(allow_short=True), prices={"RELIANCE": 1432.60}, now=at(NOW))
         r = res["results"][0]
         self.assertEqual((r["verdict"], r["kind"], r["max_loss"]), ("PASS", "entry", 484.15), r["reasons"])
+
+    def test_short_entry_uses_lower_of_plan_and_fresh_price_for_risk(self):
+        o = reliance(side="sell", stop_loss=1453.65, take_profit=1411.55)
+        res = check.check([o], cfg(allow_short=True), prices={"RELIANCE": 1420.00}, now=at(NOW))
+        r = res["results"][0]
+        self.assertEqual(r["entry_ref"], 1420.00)
+        self.assertEqual(r["entry_ref_from"], "price")
+        self.assertEqual(r["max_loss"], 773.95)
+        self.assertIn("loss:", " ".join(r["reasons"]))
 
 
 class Exits(unittest.TestCase):
