@@ -346,7 +346,7 @@ class Flow(unittest.TestCase):
         with open(self.pf) as fh:
             pf = json.load(fh)
         self.assertEqual(pf["positions"][0]["shares"], 7)
-        key = "entry:%s:12" % ticket.fingerprint(reliance())
+        key = "entry:%s:%s:12" % (TODAY, ticket.fingerprint(reliance()))
         pf.setdefault("applied_fill_ids", []).append(key)
         with open(self.pf, "w") as fh:
             json.dump(pf, fh)
@@ -357,6 +357,24 @@ class Flow(unittest.TestCase):
         with open(self.pf) as fh:
             pf = json.load(fh)
         self.assertEqual(pf["positions"][0]["shares"], 7)
+
+    def test_same_order_fill_on_a_later_day_is_not_treated_as_a_retry(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed",
+                      "--filled-qty", "7", "--filled-price", "1432.60", "--portfolio", self.pf))
+        next_day = "2026-11-02 09:40"
+        self.run_risk(now=next_day)
+        run(self.args("approve", "--index", "1", "--reply", "yes", now=next_day))
+        code, _, err = run(self.args("result", "--index", "1", "--status", "placed",
+                                     "--filled-qty", "7", "--filled-price", "1435.00",
+                                     "--portfolio", self.pf, now=next_day))
+        self.assertEqual(code, 0, err)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 14)
+        self.assertEqual(len(pf["positions"][0]["lots"]), 2)
+        self.assertEqual(len(pf["applied_fill_ids"]), 2)
 
     def test_reconcile_fill_rejects_non_increasing_or_invalid_cumulative_values(self):
         self.run_risk()
