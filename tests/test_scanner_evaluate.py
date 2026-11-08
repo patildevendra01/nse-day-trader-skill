@@ -238,7 +238,7 @@ class Evaluation(unittest.TestCase):
             rows.append("%s,%s," % (day.isoformat(), status))
             day += datetime.timedelta(days=1)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
-            handle.write("\\n".join(rows) + "\\n")
+            handle.write("\n".join(rows) + "\n")
             path = handle.name
         try:
             calendar = evaluate.load_trading_calendar(path)
@@ -250,7 +250,7 @@ class Evaluation(unittest.TestCase):
     def test_trading_calendar_csv_rejects_incomplete_year(self):
         import os
         import tempfile
-        content = "date,status,description\\n2025-01-01,trading,\\n"
+        content = "date,status,description\n2025-01-01,trading,\n"
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
             handle.write(content)
             path = handle.name
