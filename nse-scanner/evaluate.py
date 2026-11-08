@@ -273,6 +273,7 @@ def _is_member(history, symbol, signal_date):
 
 def universe_history_quality(history, data, requested_symbols):
     """Report detectable per-symbol membership/chart coverage gaps; never certify completeness."""
+    import datetime
     requested = {scan.bare(symbol) for symbol in requested_symbols}
     loaded = requested.intersection(data)
     history_symbols = set(history)
