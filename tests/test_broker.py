@@ -569,6 +569,13 @@ class Flow(unittest.TestCase):
         code, _, err = run(["fill", "--symbol", "ITC", "--side", "buy", "--qty", "0", "--price", "412",
                             "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
         self.assertEqual(code, 1)
+        for qty, price in (("0.5", "412"), ("nan", "412"), ("2", "nan"),
+                           ("2", "inf"), ("2", "-1")):
+            code, _, err = run(["fill", "--symbol", "ITC", "--side", "buy", "--qty", qty,
+                                "--price", price, "--portfolio", self.pf,
+                                "--config", self.cfg, "--state", self.state])
+            self.assertEqual(code, 1, (qty, price))
+            self.assertNotIn("Traceback", err)
 
 
 if __name__ == "__main__":
