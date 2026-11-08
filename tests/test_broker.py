@@ -361,7 +361,7 @@ class Flow(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("place the entry with your broker connector's order tool", text)
         self.assertEqual(json.loads(text[text.index("{"):text.rindex("}") + 1]), ENTRY_CALL)
-        self.assertIn("After the entry fills, generate exits with", text)
+        self.assertIn("After the entry fills, check the broker's actual position, then generate exits with:", text)
         self.assertFalse(self.state_doc()["orders"][0]["paper"])
         code, text, _ = run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "2610300001234"))
         self.assertEqual(code, 0)
