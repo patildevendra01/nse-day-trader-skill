@@ -120,8 +120,16 @@ def summarize(trades):
         mid = n // 2
         median = ordered[mid] if n % 2 else (ordered[mid - 1] + ordered[mid]) / 2
         net_median = ordered_net[mid] if n % 2 else (ordered_net[mid - 1] + ordered_net[mid]) / 2
+        sample_status = ("very_small" if n < 30 else
+                         "limited" if n < 100 else "larger_sample")
         summary.append({
             "setup": setup, "horizon_sessions": horizon, "signals": n,
+            "sample_status": sample_status,
+            "sample_warning": (
+                "Very small sample: do not draw performance conclusions." if n < 30 else
+                "Limited sample: results are uncertain and need more observations." if n < 100 else
+                "Larger descriptive sample, but not proof of statistical significance or future performance."
+            ),
             "win_rate_pct": round(sum(v > 0 for v in gross) / n * 100, 2),
             "average_return_pct": round(sum(gross) / n, 3),
             "median_return_pct": round(median, 3),
@@ -433,9 +441,10 @@ def main(argv=None):
             if not report["summary"]:
                 print("No evaluable signals in this data.")
             for row in report["summary"]:
-                print("%-18s %d-session n=%-5d gross avg=%+7.3f%% net avg=%+7.3f%% net win=%5.1f%%"
-                      % (row["setup"], row["horizon_sessions"], row["signals"],
+                print("%-18s %d-session n=%-5d sample=%-13s gross avg=%+7.3f%% net avg=%+7.3f%% net win=%5.1f%%"
+                      % (row["setup"], row["horizon_sessions"], row["signals"], row["sample_status"],
                          row["average_return_pct"], row["average_net_return_pct"], row["net_win_rate_pct"]))
+                print("  Sample caution: %s" % row["sample_warning"])
             print("Caution: historical results do not predict future performance; net returns subtract only the supplied cost assumption, not verified broker charges.")
             if errors:
                 print("%d charts failed to load." % len(errors))
