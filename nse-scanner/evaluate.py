@@ -462,6 +462,8 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         series = data.get(symbol)
         if not series:
             continue
+        if trading_calendar is not None:
+            session_quality[symbol] = audit_trading_sessions(series, trading_calendar)
         if not isinstance(series.get("adjclose"), list):
             missing_adjustments.append(symbol)
             continue
@@ -472,8 +474,6 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
             continue
         quality = inspect_series_quality(series)
         data_quality[symbol] = quality
-        if trading_calendar is not None:
-            session_quality[symbol] = audit_trading_sessions(series, trading_calendar)
         if quality["errors"]:
             rejected_data_quality.append(symbol)
             continue
