@@ -33,6 +33,15 @@ def evaluate_series(series, horizons=HORIZONS, now_utc=None):
         return [], 0
     if any(len(series[k]) < len(series["t"]) for k in required):
         return [], 0
+    # Never bridge over a missing adjusted value: doing so would silently
+    # change the meaning of "next session" and the holding-period horizon.
+    import math
+    for value in series["adjclose"][:len(series["t"])]:
+        try:
+            if value is None or not math.isfinite(float(value)) or float(value) <= 0:
+                return [], 0
+        except (TypeError, ValueError, OverflowError):
+            return [], 0
     rows = {}
     for i, stamp in enumerate(series["t"]):
         try:
