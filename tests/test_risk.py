@@ -618,7 +618,7 @@ class Cli(unittest.TestCase):
             with open(cp, "w") as fh:
                 json.dump(dict(cfg(**BASKET_CFG)), fh)
             with open(pp, "w") as fh:
-                json.dump({"prices": PRICES}, fh)
+                json.dump({"as_of": "2026-10-30T04:10:00Z", "prices": PRICES}, fh)
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = check.main(["--orders", BASKET_PATH, "--config", cp, "--portfolio", none, "--prices", pp,
