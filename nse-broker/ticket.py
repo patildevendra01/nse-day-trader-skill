@@ -672,7 +672,8 @@ def cmd_exits(a):
         raise TicketError("record the entry as placed first; exits are only for a filled entry")
     qty = _confirmed_fill_qty(a.filled_qty, order.get("qty"))
     print("EXIT ORDERS ONLY for %s: %s shares." % (bare(order.get("symbol")), qty))
-    print("Use this quantity only if it matches the broker's current filled position.")
+    print("First cancel any unfilled remainder of the entry order. Then verify this is the broker's")
+    print("current net position; use this quantity only if it matches the shares actually held.")
     for role, params in legs(order, cfg, quantity=qty)[1:]:
         print("  %s:" % role)
         for line in json.dumps(params, indent=2).splitlines():
