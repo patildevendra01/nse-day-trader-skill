@@ -529,6 +529,39 @@ class Plans(unittest.TestCase):
         self.assertIn(doc["verdict"] + "\n" + doc["verdict_notes"][0], text)
 
 
+class Muhurat(unittest.TestCase):
+    def test_muhurat_day_replays_the_short_session_clock(self):
+        raw = json.loads(TEXT)
+        res = raw["chart"]["result"][0]
+        q = res["indicators"]["quote"][0]
+        source = [i for i, ts in enumerate(res["timestamp"])
+                  if ist(ts).date().isoformat() == "2026-10-30"]
+        source = source[-75:]
+        for i in range(11):
+            src = source[61 + i]
+            res["timestamp"].append(utc_stamp(2026, 11, 8, 8, 50 + 5 * i))
+            for key in ("open", "high", "low", "close", "volume"):
+                q[key].append(q[key][src])
+        res["meta"]["regularMarketTime"] = utc_stamp(2026, 11, 8, 9, 45)
+        text = json.dumps(raw)
+        now = tm.parse_now("2026-11-08 15:16")
+        bars = tm.parse_bars(res, now)[1]
+        special = [b for b in bars if b["date"] == tm.MUHURAT_DATE]
+        self.assertEqual([b["slot"] for b in special], list(range(61, 72)))
+        entry = q["close"][source[64]]
+        p = plan(date=tm.MUHURAT_DATE, entry=entry, stop=entry - 1.0, target=entry + 2.0,
+                 entry_time="14:40", entry_bar=3, opening_range={"minutes": 15},
+                 stop_rule="or_mid", flat_by="15:10")
+        self.assertEqual((p["entry_bar"], p["bar_slot"], p["entry_time"]), (3, 64, "14:40"))
+        doc = machine(p=p, text=text, now=now, replays=200)
+        self.assertEqual(doc["mc"]["until"], "15:10")
+        self.assertEqual(doc["mc"]["bars_left"], 6)
+        self.assertEqual((doc["mc"]["band_times"][0], doc["mc"]["band_times"][-1]),
+                         ("14:40", "15:10"))
+        self.assertEqual(doc["history"]["sessions"], 39)
+        self.assertEqual(doc["history"]["rule"]["session_open_slot"], 61)
+
+
 class Network(unittest.TestCase):
     def setUp(self):
         self.calls, self.sleeps = [], []
