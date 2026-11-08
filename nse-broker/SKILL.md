@@ -221,8 +221,15 @@ money). If the connector has no order tool, stay in paper mode.
   late in the session (around 15:15 to 15:25, and it may charge a fee): be flat
   before that.
 - When the stop-loss or the take-profit fills, record it:
-  `ticket.py fill --symbol RELIANCE --side sell --qty 23 --price 1411.55`, then
+  `ticket.py fill --symbol RELIANCE --side sell --qty 23 --price 1411.55 --fill-id BROKER_TRADE_ID`, then
   cancel the other leg.
+- For manual fill records, pass the broker's unique trade/execution ID with
+  `--fill-id`. Repeating the same command with the same ID and details is safe:
+  it will not add the shares or cash twice. A different broker fill must use its
+  own ID, even if its quantity and price happen to match. If your broker does not
+  show a trade ID, do not invent one; omit `--fill-id` and take extra care not
+  to repeat the command.
+
 - By `flat_by` (15:15 IST by default), anything still open gets closed:
   1. Check the shares actually held with the broker's positions lookup (read only).
   2. `ticket.py flatten --symbol RELIANCE --qty 23` writes a market sell for
