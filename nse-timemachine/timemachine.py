@@ -585,7 +585,10 @@ def normalize_plan(raw, src="flags"):
     if raw.get("entry_time"):
         close_min = parse_clock(raw["entry_time"], "entry_time")
         if close_min < session_open + 5 or close_min > session_close or (close_min - session_open) % 5:
-            raise TMError("entry_time %s is outside this session or not on its 5-minute grid" % raw["entry_time"])
+            if date == MUHURAT_DATE:
+                raise TMError("entry_time %s is outside this session or not on its 5-minute grid" % raw["entry_time"])
+            raise TMError("entry_time %s must be on the 5-minute grid between 09:20 and 15:25 IST"
+                          % raw["entry_time"])
         k = (close_min - session_open) // 5 - 1
     if raw.get("entry_bar") is not None:
         try:
@@ -737,7 +740,10 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     else:
         until_min = parse_clock(until, "--until")
     if (until_min - OPEN_MIN) % 5 or until_min < session_open + 5 or until_min > session_close:
-        raise TMError("--until must be on the 5-minute grid between this session's open and close (%s)" % clock24(session_close))
+        if plan.get("session_open_slot", 0):
+            raise TMError("--until must be on the 5-minute grid between this session's open and close (%s)"
+                          % clock24(session_close))
+        raise TMError("--until must be on the 5-minute grid and no later than %s (the close)" % clock24(session_close))
     last = (until_min - OPEN_MIN) // 5 - 1
     if last <= k:
         raise TMError("--until %s leaves nothing to replay after the %s entry" % (clock24(until_min),
