@@ -28,7 +28,7 @@ class Evaluation(unittest.TestCase):
         closes = [100 + i * 0.1 for i in range(40)]
         series = make_series(closes)
         trades, skipped = evaluate.evaluate_series(series)
-        self.assertEqual(skipped, 0)
+        self.assertGreater(skipped, 0)  # latest signals lack the full 3- and 5-session look-ahead
         self.assertTrue(trades)
         one = next(t for t in trades if t["horizon"] == 1)
         self.assertEqual(one["entry_date"], one["exit_date"])
