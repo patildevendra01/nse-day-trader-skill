@@ -280,6 +280,17 @@ class Flow(unittest.TestCase):
         self.assertIn("already placed today", " ".join(res["results"][0]["reasons"]))
         self.assertEqual((res["today"]["entries_placed"], res["today"]["loss_at_risk"]), (1, 484.15))
 
+    def test_a_paper_risk_pass_cannot_be_reused_after_switching_to_live(self):
+        self.assertEqual(self.run_risk(), 0)
+        self.set_cfg(paper=False)
+        code, text, _ = run(self.args("show", "--index", "1"))
+        self.assertEqual(code, 1)
+        self.assertIn("paper/live mode changed since the risk check", text)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes"))
+        self.assertEqual(code, 1)
+        self.assertIn("paper/live mode changed since the risk check", err)
+        self.assertFalse(os.path.exists(self.state))
+
     def test_the_live_flow_sends_the_entry_call_then_the_legs(self):
         self.set_cfg(paper=False)
         self.run_risk()
