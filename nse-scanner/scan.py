@@ -126,7 +126,7 @@ NSE_HOLIDAYS = {   # weekday closures, cash equity segment (nseindia.com holiday
     "2026-11-24": "Prakash Gurpurb Sri Guru Nanak Dev",
     "2026-12-25": "Christmas",
 }
-NSE_EARLY_CLOSE = {}   # the NSE has no half-days. The Diwali Muhurat evening hour (Sun 2026-11-08, hours set by NSE) is a special session this tool does not model.
+NSE_EARLY_CLOSE = {}   # no regular-session half-days; the separate Muhurat session is modeled below.
 CALENDAR_YEARS = (2026,)   # the official 2027 list is not out yet
 OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
@@ -475,7 +475,24 @@ def rsi(closes, n=14):
     for i in range(n, len(g)):
         ag = (ag * (n - 1) + g[i]) / n
         al = (al * (n - 1) + lo[i]) / n
-    return 100 - 100 / (1 + ag / al) if al else 100.0
+    if al == 0:
+        return 50.0 if ag == 0 else 100.0
+    return 100 - 100 / (1 + ag / al)
+
+
+def last_completed_session(now_utc):
+    """Most recent NSE session whose close has passed, using the known calendar."""
+    now = to_ist(now_utc)
+    day = now.date()
+    today_session = session(day)
+    if today_session and now.time() >= today_session[1]:
+        return day
+    day -= datetime.timedelta(days=1)
+    for _ in range(370):
+        if session(day):
+            return day
+        day -= datetime.timedelta(days=1)
+    return None
 
 
 def daily_closes(series, now_utc):
@@ -525,7 +542,8 @@ def find_setups(closes):
 def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.0):
     """Pure. data = {SYM: series}. Returns (hits, counts, last_date)."""
     hits, dates = [], {}
-    counts = {"requested": len(symbols), "fetched": 0, "illiquid": 0, "short": 0, "scanned": 0}
+    expected_date = last_completed_session(now_utc)
+    counts = {"requested": len(symbols), "fetched": 0, "illiquid": 0, "short": 0, "stale": 0, "scanned": 0}
     for sym in symbols:
         s = data.get(sym)
         if not s:
@@ -546,8 +564,11 @@ def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.
         if len(bars) < MIN_DAILY_BARS:
             counts["short"] += 1
             continue
-        counts["scanned"] += 1
         d_last = bars[-1][0]
+        if expected_date is not None and d_last != expected_date:
+            counts["stale"] += 1
+            continue
+        counts["scanned"] += 1
         dates[d_last] = dates.get(d_last, 0) + 1
         closes = [c for _, c in bars]
         tags, nums = find_setups(closes)
@@ -920,6 +941,10 @@ def cmd_daily(a):
                            "{:,}".format(a.min_volume),
                            (", %d had under %d days" % (counts["short"], MIN_DAILY_BARS)) if counts["short"] else "",
                            "{:,}".format(counts["scanned"])))
+    if counts["stale"]:
+        print("Skipped %s chart%s with stale daily data (latest close was not %s)." %
+              ("{:,}".format(counts["stale"]), "" if counts["stale"] == 1 else "s",
+               expected_date.isoformat() if expected_date else "the latest completed NSE session"))
     if hits:
         per = [(k, sum(1 for h in hits if k in h["setups"])) for k, _ in SETUPS]
         print("%d chart%s matched a setup: %s." % (len(hits), "" if len(hits) == 1 else "s",
