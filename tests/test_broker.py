@@ -300,14 +300,26 @@ class Flow(unittest.TestCase):
         self.assertNotIn('"transaction_type": "BUY"', text)
         self.assertIn("EXIT ORDERS ONLY", text)
 
-    def test_exit_quantity_must_be_positive_whole_and_not_over_order_qty(self):
+    def test_exit_quantity_must_be_positive_whole_and_match_recorded_fill(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
-        run(self.args("result", "--index", "1", "--status", "placed"))
-        for bad in ("0", "-1", "2.5", "24", "nan"):
+        run(self.args("result", "--index", "1", "--status", "placed",
+                      "--filled-qty", "7", "--filled-price", "1432.60", "--portfolio", self.pf))
+        for bad in ("0", "-1", "2.5", "24", "nan", "8"):
             code, _, err = run(self.args("exits", "--index", "1", "--filled-qty", bad))
             self.assertEqual(code, 1, bad)
             self.assertNotIn("Traceback", err)
+        code, text, _ = run(self.args("exits", "--index", "1", "--filled-qty", "7"))
+        self.assertEqual(code, 0)
+        self.assertIn('"quantity": 7', text)
+
+    def test_exits_are_blocked_until_entry_fill_quantity_is_recorded(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed"))
+        code, _, err = run(self.args("exits", "--index", "1", "--filled-qty", "7"))
+        self.assertEqual(code, 1)
+        self.assertIn("no entry fill quantity is recorded", err)
 
     def test_no_exit_tickets_until_entry_is_recorded_placed(self):
         self.run_risk()
