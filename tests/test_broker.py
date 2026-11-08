@@ -706,6 +706,28 @@ class Flow(unittest.TestCase):
         with open(self.pf) as fh:
             self.assertEqual(fh.read(), before)
 
+    def test_fill_buy_blocks_when_existing_position_lots_are_inconsistent(self):
+        pf = {"cash": 10000, "positions": [{"ticker": "ITC", "shares": 30, "lots": [
+            {"id": "ITC-1", "date": "2026-01-02", "shares": 20, "cost": 8000.0}]}]}
+        with open(self.pf, "w") as fh:
+            json.dump(pf, fh)
+        before = open(self.pf).read()
+        code, _, err = run(["fill", "--symbol", "ITC", "--side", "buy", "--qty", "2", "--price", "400",
+                            "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("portfolio integrity check failed", err)
+        with open(self.pf) as fh:
+            self.assertEqual(fh.read(), before)
+
+    def test_fill_blocks_non_finite_portfolio_cash(self):
+        pf = {"cash": float("nan"), "positions": []}
+        with open(self.pf, "w") as fh:
+            json.dump(pf, fh)
+        code, _, err = run(["fill", "--symbol", "ITC", "--side", "buy", "--qty", "2", "--price", "400",
+                            "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("portfolio cash must be a finite number", err)
+
     def test_fill_sell_rejects_invalid_lot_records(self):
         pf = {"cash": 0, "positions": [{"ticker": "ITC", "shares": 10, "lots": [
             {"id": "ITC-1", "date": "2026-01-02", "shares": 10, "cost": float("nan")}]}]}
