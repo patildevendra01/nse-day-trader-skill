@@ -68,6 +68,20 @@ class Evaluation(unittest.TestCase):
         self.assertEqual(report["symbols_loaded"], 0)
         self.assertEqual(report["symbols_rejected_missing_adjusted_close"], ["TEST"])
 
+    def test_null_adjusted_close_rejects_entire_series(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        series["adjclose"][10] = None
+        trades, skipped = evaluate.evaluate_series(series)
+        self.assertEqual(trades, [])
+
+    def test_adjustment_factor_changes_historical_return(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        series["adjclose"] = list(series["c"])
+        series["adjclose"][31] *= 0.90
+        trades, _ = evaluate.evaluate_series(series)
+        one = next(t for t in trades if t["horizon"] == 1 and t["signal_date"] == "2025-01-30")
+        self.assertAlmostEqual(one["exit"], series["adjclose"][30])
+
     def test_no_future_bars_are_counted_as_trades(self):
         closes = [100 + i * 0.1 for i in range(30)]
         series = make_series(closes)
