@@ -149,5 +149,5 @@ Verified offline against fixtures; live endpoints not exercised at build time.
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
   user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
   (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No derivatives, margin, short selling or leverage unless the config allows it and the user confirms.
+- No derivatives, margin or leverage unless the config allows it and the user confirms. Short entries are unsupported and remain blocked even if `allow_short` is set to true.
 - Broker logins and keys are entered by the user in the broker's own sign-in, never in the chat.
