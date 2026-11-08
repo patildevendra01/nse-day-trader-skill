@@ -394,8 +394,13 @@ def risk_verdict(risk, fp, today):
     return None, "this exact order was not in the last risk check (it changed or is new); run check.py again"
 
 
-def status_of(order, risk, state, today):
-    """(ready, label, risk_result)"""
+def status_of(order, risk, state, today, cfg=None):
+    """(ready, label, risk_result); risk must have been checked in the current mode."""
+    if risk is not None:
+        checked_paper = bool(risk.get("paper", True))
+        current_paper = bool((cfg or {}).get("paper", True))
+        if checked_paper != current_paper:
+            return False, "NOT READY: paper/live mode changed since the risk check; run nse-risk again", None
     fp = fingerprint(order)
     rv, why = risk_verdict(risk, fp, today)
     if rv is None:
@@ -426,7 +431,7 @@ def broker_name(cfg):
 
 
 def render(order, idx, total, cfg, risk, state, today):
-    ready, label, rv = status_of(order, risk, state, today)
+    ready, label, rv = status_of(order, risk, state, today, cfg)
     paper = cfg.get("paper", True)
     mode = "PAPER mode (nothing is sent to a broker)" if paper else "LIVE ACCOUNT, REAL MONEY"
     lines = ["ORDER %d of %d, %s, %s" % (idx, total, mode, broker_name(cfg))]
