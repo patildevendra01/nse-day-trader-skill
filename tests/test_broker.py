@@ -478,7 +478,8 @@ class Flow(unittest.TestCase):
         self.assertIn("When the first fill is confirmed, attach it to this order with:", text)
         self.assertIn("cancel the other one", text)
         code, text, _ = run(self.args("result", "--index", "1", "--status", "placed",
-                                     "--filled-qty", "23", "--filled-price", "1432.65"))
+                                     "--filled-qty", "23", "--filled-price", "1432.65",
+                                     "--portfolio", self.pf))
         self.assertEqual(code, 0)
         self.assertIn("Added the fill to", text)
         self.assertIn("ticket.py exits --index 1 --filled-qty 23", text)
