@@ -490,7 +490,8 @@ class Exits(unittest.TestCase):
         self.assertIn("format:", reasons(check.check([self.sell(order_type="limit")], cfg(), self.PF, PRICES, now=at(NOW))))
         self.assertIn("asset:", reasons(check.check([self.sell(symbol="RELIANCE.NS")], cfg(), self.PF, PRICES, now=at(NOW))))
         res = check.check([self.sell(qty=30)], cfg(), self.PF, PRICES, now=at(NOW))
-        self.assertIn("short: selling more RELIANCE than you hold (23 shares)", reasons(res))
+        self.assertIn("short entries are not supported", reasons(res))
+        self.assertIn("Selling more RELIANCE than you hold (23 shares)", reasons(res))
 
     def test_holdings_match_with_or_without_a_suffix(self):
         pf = {"cash": 50000, "positions": [{"ticker": "reliance.ns", "shares": 23, "lots": []}]}
