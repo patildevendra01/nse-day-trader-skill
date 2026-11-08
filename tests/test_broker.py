@@ -338,6 +338,26 @@ class Flow(unittest.TestCase):
         self.assertIn('"quantity": 12', text)
         self.assertNotIn('"quantity": 7', text)
 
+    def test_reconcile_fill_retry_does_not_apply_the_same_delta_twice(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed",
+                      "--filled-qty", "7", "--filled-price", "1432.60", "--portfolio", self.pf))
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 7)
+        key = "entry:%s:12" % ticket.fingerprint(reliance())
+        pf.setdefault("applied_fill_ids", []).append(key)
+        with open(self.pf, "w") as fh:
+            json.dump(pf, fh)
+        code, _, _ = run(self.args("reconcile-fill", "--index", "1", "--filled-qty", "12",
+                                   "--filled-price", "1433.10", "--portfolio", self.pf,
+                                   now="2026-10-30 09:43"))
+        self.assertEqual(code, 0)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 7)
+
     def test_reconcile_fill_rejects_non_increasing_or_invalid_cumulative_values(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
