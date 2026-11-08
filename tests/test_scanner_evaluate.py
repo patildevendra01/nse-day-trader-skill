@@ -184,6 +184,29 @@ class Evaluation(unittest.TestCase):
         self.assertEqual(quality["loaded_symbols_without_membership_history"], ["TEST"])
         self.assertEqual(quality["status"], "review_required")
 
+    def test_series_quality_rejects_inconsistent_ohlc(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        series["h"][12] = series["o"][12] - 1
+        quality = evaluate.inspect_series_quality(series)
+        self.assertEqual(quality["status"], "review_required")
+        self.assertTrue(any("inconsistent OHLC" in x for x in quality["errors"]))
+        report = evaluate.evaluate({"TEST": series})
+        self.assertEqual(report["symbols_rejected_data_quality"], ["TEST"])
+        self.assertEqual(report["symbols_loaded"], 0)
+
+    def test_series_quality_detects_duplicate_daily_dates(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        series["t"][20] = series["t"][19]
+        quality = evaluate.inspect_series_quality(series)
+        self.assertTrue(any("duplicated" in x for x in quality["errors"]))
+
+    def test_series_quality_flags_possible_missing_session_gap(self):
+        series = make_series([100 + i * 0.1 for i in range(40)])
+        series["t"][20:] = [stamp + 4 * 86400 for stamp in series["t"][20:]]
+        quality = evaluate.inspect_series_quality(series)
+        self.assertTrue(quality["possible_date_gaps"])
+        self.assertIn("possible_date_gaps", quality)
+
     def test_evaluate_is_offline_and_reports_limitations(self):
         data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
         report = evaluate.evaluate(data)
