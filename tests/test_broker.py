@@ -224,8 +224,10 @@ class Flow(unittest.TestCase):
         code, text, _ = run(self.args("show", "--index", "1"))
         self.assertEqual(code, 0)
         self.assertIn("ORDER 1 of 1, PAPER mode (nothing is sent to a broker), Zerodha Kite", text)
-        for part in RELIANCE_PLAIN.split(" / "):
-            self.assertIn("  " + part + "\n", text)
+        self.assertIn("  BUY 23 RELIANCE (NSE, MIS), market, good for today\n", text)
+        self.assertIn("max loss about ₹484.15", text)
+        self.assertNotIn("then stop-loss: SELL 23", text)
+        self.assertNotIn("then take-profit: SELL 23", text)
         self.assertIn("READY: nse-risk PASS", text)
         for k, v in ENTRY_CALL.items():
             self.assertIn('"%s": %s' % (k, json.dumps(v)), text)
@@ -384,7 +386,7 @@ class Flow(unittest.TestCase):
         self.assertEqual([l["role"] for l in t["legs"]], ["entry"])
         self.assertTrue(t["exits_available_after_fill"])
         self.assertEqual(t["fingerprint"], check.fingerprint(reliance()))
-        self.assertEqual(t["plain"], RELIANCE_PLAIN)
+        self.assertEqual(t["plain"], "BUY 23 RELIANCE (NSE, MIS), market, good for today / max loss about ₹484.15 if the stop fills at 1411.55")
 
     def test_flatten_by_the_close(self):
         self.run_risk()
