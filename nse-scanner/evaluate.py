@@ -201,6 +201,46 @@ def _is_member(history, symbol, signal_date):
                for start, end in history.get(symbol, []))
 
 
+def universe_history_quality(history, data, requested_symbols):
+    """Report detectable membership/chart coverage gaps; never certify completeness."""
+    requested = {scan.bare(symbol) for symbol in requested_symbols}
+    loaded = requested.intersection(data)
+    history_symbols = set(history)
+    missing_history = sorted(loaded - history_symbols)
+    missing_charts = sorted((history_symbols & requested) - set(data))
+    chart_days = []
+    for symbol in loaded:
+        series = data.get(symbol) or {}
+        for stamp in series.get("t") or []:
+            try:
+                chart_days.append(scan.ts_to_ist(stamp).date())
+            except (TypeError, ValueError, OverflowError):
+                continue
+    if chart_days:
+        chart_start, chart_end = min(chart_days), max(chart_days)
+        out_of_range = []
+        for symbol, spans in history.items():
+            if symbol not in requested:
+                continue
+            for start, end in spans:
+                if start > chart_end or (end is not None and end < chart_start):
+                    out_of_range.append({"symbol": symbol, "effective_from": start.isoformat(),
+                                         "effective_to": end.isoformat() if end else ""})
+    else:
+        chart_start = chart_end = None
+        out_of_range = []
+    return {
+        "status": "review_required" if missing_history or missing_charts or out_of_range else "no_detectable_gap",
+        "chart_date_start": chart_start.isoformat() if chart_start else None,
+        "chart_date_end": chart_end.isoformat() if chart_end else None,
+        "loaded_symbols_without_membership_history": missing_history,
+        "requested_membership_symbols_without_chart_data": missing_charts,
+        "membership_intervals_outside_chart_date_range": out_of_range,
+        "completeness_verified": False,
+        "warning": "This checks detectable file and date-range gaps only; it cannot prove the membership history or chart universe is complete or accurate."
+    }
+
+
 def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe_history=None):
     if not _valid_nonnegative_number(round_trip_cost_pct):
         raise ValueError("round_trip_cost_pct must be a finite, non-negative number")
@@ -211,6 +251,8 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
     excluded_by_universe = 0
     if universe_history is not None and not isinstance(universe_history, dict):
         universe_history = load_universe_history(universe_history)
+    history_quality = (universe_history_quality(universe_history, data, symbols)
+                       if universe_history is not None else None)
     for symbol in symbols:
         series = data.get(symbol)
         if not series:
@@ -245,6 +287,7 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         "net_returns_account_for_cost_assumption": True,
         "point_in_time_universe_applied": universe_history is not None,
         "universe_history_symbols": sorted(universe_history) if universe_history is not None else [],
+        "universe_history_quality": history_quality,
         "observations_excluded_outside_historical_universe": excluded_by_universe,
         "entry_rule": "next available daily session adjusted open after the signal close",
         "exit_rule": "adjusted daily close after 1, 3 or 5 held sessions",
@@ -294,6 +337,14 @@ def main(argv=None):
             if a.universe_history:
                 print("Point-in-time universe membership applied from: %s" % a.universe_history)
                 print("Observations excluded outside dated membership: %d" % report["observations_excluded_outside_historical_universe"])
+                quality = report["universe_history_quality"]
+                print("Membership-data quality check: %s (completeness is not verified)." % quality["status"])
+                if quality["loaded_symbols_without_membership_history"]:
+                    print("Loaded symbols missing from membership CSV: %s" % ", ".join(quality["loaded_symbols_without_membership_history"]))
+                if quality["requested_membership_symbols_without_chart_data"]:
+                    print("Requested historical members missing chart data: %s" % ", ".join(quality["requested_membership_symbols_without_chart_data"]))
+                if quality["membership_intervals_outside_chart_date_range"]:
+                    print("Membership intervals outside available chart dates: %d" % len(quality["membership_intervals_outside_chart_date_range"]))
             else:
                 print("WARNING: no point-in-time universe supplied; results may have survivorship bias.")
             if report["symbols_rejected_missing_adjusted_close"]:
