@@ -198,8 +198,9 @@ money). If the connector has no order tool, stay in paper mode.
    then run `ticket.py exits --index N --filled-qty Q`. This prints ONLY the
    stop-loss and take-profit orders at that confirmed quantity; it never repeats
    the entry. If fills change, use the current broker-confirmed net quantity.
-   Never place exits for more shares than the broker currently holds. Each live
-   exit still needs its own Allow once.
+   Cancel any unfilled remainder of the entry order first, then verify the
+   broker's current net position. Never place exits for more shares than the
+   broker currently holds. Each live exit still needs its own Allow once.
 
 ## Steps: while it is open, and out by the close
 
