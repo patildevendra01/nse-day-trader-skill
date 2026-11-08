@@ -19,6 +19,25 @@ HORIZONS = (1, 3, 5)
 SETUP_KEYS = tuple(key for key, _ in scan.SETUPS)
 
 
+def _is_zero_volume_flat_placeholder(series, index):
+    """Identify provider placeholder rows with zero volume and a flat OHLC candle.
+
+    These rows are not treated as exchange sessions. Raw downloaded data is
+    left untouched; only evaluation and quality audits ignore the row.
+    """
+    volumes = series.get("v")
+    if not isinstance(volumes, list) or index >= len(volumes):
+        return False
+    try:
+        volume = float(volumes[index])
+        o, h, lo, close = (float(series[key][index]) for key in ("o", "h", "l", "c"))
+    except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+        return False
+    return (math.isfinite(volume) and volume == 0 and
+            all(math.isfinite(x) for x in (o, h, lo, close)) and
+            o == h == lo == close)
+
+
 def evaluate_series(series, horizons=HORIZONS, now_utc=None, round_trip_cost_pct=0.0):
     """Evaluate adjusted-close signals using next-session adjusted-open entry.
 
@@ -47,6 +66,8 @@ def evaluate_series(series, horizons=HORIZONS, now_utc=None, round_trip_cost_pct
             return [], 0
     rows = {}
     for i, stamp in enumerate(series["t"]):
+        if _is_zero_volume_flat_placeholder(series, i):
+            continue
         try:
             day = scan.ts_to_ist(stamp).date()
             o, h, lo, c, adj = (series[k][i] for k in ("o", "h", "l", "c", "adjclose"))
@@ -181,7 +202,13 @@ def inspect_series_quality(series):
         else:
             arrays[key] = value
     dates = []
+    ignored_placeholders = 0
+    checked_bars = 0
     for i, stamp in enumerate(timestamps):
+        if _is_zero_volume_flat_placeholder(series, i):
+            ignored_placeholders += 1
+            continue
+        checked_bars += 1
         try:
             if isinstance(stamp, bool):
                 raise ValueError("boolean timestamp")
@@ -215,7 +242,8 @@ def inspect_series_quality(series):
                          "warning": "possible missing session; verify exchange holidays"})
     return {
         "status": "review_required" if errors or gaps else "no_detectable_issue",
-        "bars_checked": len(timestamps),
+        "bars_checked": checked_bars,
+        "zero_volume_flat_placeholders_ignored": ignored_placeholders,
         "errors": sorted(set(errors)),
         "possible_date_gaps": gaps,
     }
@@ -276,7 +304,9 @@ def audit_trading_sessions(series, calendar):
     """Compare observed bars with a complete supplied equities calendar."""
     import datetime
     dates = []
-    for stamp in series.get("t") or []:
+    for i, stamp in enumerate(series.get("t") or []):
+        if _is_zero_volume_flat_placeholder(series, i):
+            continue
         try:
             dates.append(scan.ts_to_ist(stamp).date())
         except (TypeError, ValueError, OverflowError):
