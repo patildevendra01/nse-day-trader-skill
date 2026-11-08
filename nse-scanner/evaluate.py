@@ -179,7 +179,7 @@ def _valid_positive_number(value):
         return False
 
 
-def inspect_series_quality(series):
+def inspect_series_quality(series, trading_calendar=None):
     """Inspect daily OHLC/adjustment integrity without claiming source completeness."""
     import datetime
     errors = []
@@ -237,9 +237,19 @@ def inspect_series_quality(series):
     for previous, current in zip(ordered_dates, ordered_dates[1:]):
         calendar_days = (current - previous).days
         if calendar_days >= 4:
-            gaps.append({"after": previous.isoformat(), "before": current.isoformat(),
-                         "calendar_days_apart": calendar_days,
-                         "warning": "possible missing session; verify exchange holidays"})
+            # With an exchange calendar, warn only when at least one expected
+            # trading session lies inside the date gap. Weekends and official
+            # holidays alone are not missing-data warnings.
+            expected_sessions_inside_gap = None
+            if trading_calendar is not None:
+                expected_sessions_inside_gap = any(
+                    previous < day < current and item["status"] in ("trading", "special")
+                    for day, item in trading_calendar.items()
+                )
+            if trading_calendar is None or expected_sessions_inside_gap:
+                gaps.append({"after": previous.isoformat(), "before": current.isoformat(),
+                             "calendar_days_apart": calendar_days,
+                             "warning": "possible missing session; verify exchange holidays"})
     return {
         "status": "review_required" if errors or gaps else "no_detectable_issue",
         "bars_checked": checked_bars,
@@ -502,7 +512,7 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
                 for value in series["adjclose"][:len(series.get("t") or [])]):
             invalid_adjustments.append(symbol)
             continue
-        quality = inspect_series_quality(series)
+        quality = inspect_series_quality(series, trading_calendar=trading_calendar)
         data_quality[symbol] = quality
         if quality["errors"]:
             rejected_data_quality.append(symbol)
