@@ -75,7 +75,7 @@ batch that is fine order by order but breaks a limit together is caught.
 | --- | --- |
 | format | no symbol, exchange not NSE or BSE, side not buy or sell, a qty that is not a whole number above zero (no fractional or rupee-amount orders on NSE), a product other than MIS or CNC, an unknown order type or validity, a limit or sl order with no `limit_price`, an sl or sl-m order with no `trigger_price`, a price that is not a multiple of the tick (`tick`, default 0.05), a `stop_loss` without a `take_profit` or the other way round |
 | asset | a futures or options symbol (like NIFTY26NOV24500CE) while `allow_options` is false; a symbol that is not a plain NSE equity symbol, including RELIANCE.NS (use RELIANCE); a trade-to-trade series (-BE, -BZ, -BL) bought as MIS, because those stocks cannot be traded intraday |
-| short | a sell of more than you hold (`allow_short` false). MIS short selling exists in India; this pack does not do it |
+| short | any new short position (selling more than you hold). This pack's portfolio tracker does not support short positions, so `allow_short: true` cannot enable them |
 | blocked | (entries) the symbol is on the `blocked` list |
 | size | (entries) under `min_order_inr` or over `max_order_inr` |
 | position | (entries) the stock would be over `max_position_pct` of the account |
@@ -198,5 +198,5 @@ pattern-day-trader rule. The cash-buffer rule no longer fires when
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
   user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
   (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No derivatives, margin, short selling or leverage unless the config allows it and the user confirms.
+- No derivatives, margin or leverage unless the config allows it and the user confirms. Short entries are unsupported and remain blocked even if `allow_short` is set to true.
 - Broker logins and keys are entered by the user in the broker's own sign-in, never in the chat.
