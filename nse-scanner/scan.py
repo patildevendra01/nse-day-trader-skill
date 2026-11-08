@@ -303,8 +303,11 @@ def series_from_result(res):
     def col(k):
         v = q.get(k)
         return list(v) + [None] * (n - len(v)) if isinstance(v, list) else None
+    adj = ((res.get("indicators") or {}).get("adjclose") or [{}])[0] or {}
+    adjclose = adj.get("adjclose")
+    adjclose = list(adjclose) + [None] * (n - len(adjclose)) if isinstance(adjclose, list) else None
     return {"t": list(t), "c": col("close") or [None] * n, "o": col("open"), "h": col("high"),
-            "l": col("low"), "v": col("volume"), "meta": res.get("meta") or {}}
+            "l": col("low"), "adjclose": adjclose, "v": col("volume"), "meta": res.get("meta") or {}}
 
 
 def parse_spark(text_or_doc, wanted=None):
