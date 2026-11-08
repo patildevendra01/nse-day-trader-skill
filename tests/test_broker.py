@@ -285,6 +285,19 @@ class Flow(unittest.TestCase):
         self.assertIn("already placed today", " ".join(res["results"][0]["reasons"]))
         self.assertEqual((res["today"]["entries_placed"], res["today"]["loss_at_risk"]), (1, 484.15))
 
+    def test_approval_logs_the_conservative_loss_from_risk_check(self):
+        self.assertEqual(self.run_risk(), 0)
+        with open(self.risk) as fh:
+            risk = json.load(fh)
+        risk["results"][0]["max_loss"] = 900.25
+        risk["results"][0]["stop"] = 1411.55
+        with open(self.risk, "w") as fh:
+            json.dump(risk, fh)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes"))
+        self.assertEqual(code, 0, err)
+        approval = self.state_doc()["orders"][0]
+        self.assertEqual(approval["max_loss"], 900.25)
+        self.assertEqual(approval["stop"], 1411.55)
     def test_partial_fill_exits_use_only_the_confirmed_quantity(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
