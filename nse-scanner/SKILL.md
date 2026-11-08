@@ -83,7 +83,7 @@ session's volume at least `--min-volume`. Run it before the open or after the
 close: during the session the volume is the day's so far, and today's daily
 bar is left out until 15:30.
 
-The setups are computed from daily closes only (spark has no highs or lows):
+The scanner requires each chart's latest completed daily candle to match the latest completed NSE session; stale charts are skipped and counted. The setups are computed from daily closes only (spark has no highs or lows):
 
 | setup | the rule on closes |
 | --- | --- |
@@ -93,7 +93,7 @@ The setups are computed from daily closes only (spark has no highs or lows):
 | `oversold` | RSI 14 (Wilder) under 30 |
 | `oversold_bounce` | RSI 14 was under 30 yesterday and today closed up |
 
-Hits are listed most traded first (price times volume).
+Hits are listed most traded first (price times volume). A flat 14-period RSI is treated as neutral (50), not overbought. A chart with an old latest candle is excluded rather than being presented as a current setup.
 
 ## The opening-range breakout scan (during the session)
 
