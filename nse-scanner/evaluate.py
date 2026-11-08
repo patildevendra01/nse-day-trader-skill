@@ -221,6 +221,107 @@ def inspect_series_quality(series):
     }
 
 
+
+def load_trading_calendar(path):
+    """Load a complete daily NSE equities calendar; never infer missing years."""
+    import csv
+    import datetime
+    calendar = {}
+    years = set()
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            required = {"date", "status", "description"}
+            if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+                raise scan.ScanError("trading calendar CSV needs date,status,description columns")
+            for line, row in enumerate(reader, 2):
+                date_text = (row.get("date") or "").strip()
+                status = (row.get("status") or "").strip().lower()
+                if not date_text or status not in ("trading", "holiday", "weekend", "special"):
+                    raise scan.ScanError("trading calendar row %d has a blank date or invalid status" % line)
+                try:
+                    day = datetime.date.fromisoformat(date_text)
+                except ValueError:
+                    raise scan.ScanError("trading calendar row %d has an invalid ISO date" % line)
+                if day.isoformat() != date_text:
+                    raise scan.ScanError("trading calendar row %d date must use YYYY-MM-DD" % line)
+                if day in calendar:
+                    raise scan.ScanError("duplicate trading calendar date: %s" % date_text)
+                if status == "trading" and day.weekday() >= 5:
+                    raise scan.ScanError("weekend date must use special or weekend status: %s" % date_text)
+                if status == "weekend" and day.weekday() < 5:
+                    raise scan.ScanError("weekday date cannot use weekend status: %s" % date_text)
+                calendar[day] = {
+                    "status": status,
+                    "description": (row.get("description") or "").strip(),
+                }
+                years.add(day.year)
+    except OSError as exc:
+        raise scan.ScanError("cannot read trading calendar CSV: %s" % exc)
+    if not calendar:
+        raise scan.ScanError("trading calendar CSV contains no dates")
+    for year in years:
+        first = datetime.date(year, 1, 1)
+        last = datetime.date(year, 12, 31)
+        expected_days = (last - first).days + 1
+        present_days = sum(1 for day in calendar if day.year == year)
+        if present_days != expected_days:
+            raise scan.ScanError(
+                "trading calendar year %d is incomplete: expected %d daily rows, found %d"
+                % (year, expected_days, present_days))
+    return calendar
+
+
+def audit_trading_sessions(series, calendar):
+    """Compare observed bars with a complete supplied equities calendar."""
+    import datetime
+    dates = []
+    for stamp in series.get("t") or []:
+        try:
+            dates.append(scan.ts_to_ist(stamp).date())
+        except (TypeError, ValueError, OverflowError):
+            continue
+    if not dates:
+        return {"status": "not_checked", "missing_trading_sessions": [],
+                "bars_on_closed_dates": [], "calendar_coverage": "no_valid_chart_dates"}
+    start, end = min(dates), max(dates)
+    required_years = set(range(start.year, end.year + 1))
+    available_years = {day.year for day in calendar}
+    missing_years = sorted(required_years - available_years)
+    if missing_years:
+        return {
+            "status": "not_checked",
+            "chart_date_start": start.isoformat(),
+            "chart_date_end": end.isoformat(),
+            "missing_calendar_years": missing_years,
+            "missing_trading_sessions": [],
+            "bars_on_closed_dates": [],
+            "calendar_coverage": "incomplete",
+        }
+    observed = set(dates)
+    expected = sorted(
+        day for day, item in calendar.items()
+        if start <= day <= end and item["status"] in ("trading", "special")
+    )
+    missing = [day.isoformat() for day in expected if day not in observed]
+    unexpected = sorted(
+        day.isoformat() for day in observed
+        if day in calendar and calendar[day]["status"] in ("holiday", "weekend")
+    )
+    return {
+        "status": "review_required" if missing or unexpected else "no_detectable_gap",
+        "chart_date_start": start.isoformat(),
+        "chart_date_end": end.isoformat(),
+        "calendar_coverage": "complete_for_chart_years",
+        "missing_calendar_years": [],
+        "expected_trading_sessions": len(expected),
+        "observed_trading_sessions": len(observed),
+        "missing_trading_sessions": missing,
+        "bars_on_closed_dates": unexpected,
+        "warning": "A missing stock bar can also reflect suspension, no trades, or a source omission; verify flagged dates before treating them as missing vendor data."
+    }
+
+
 def load_universe_history(path):
     """Read inclusive point-in-time membership intervals from a CSV file."""
     import csv
@@ -340,7 +441,7 @@ def universe_history_quality(history, data, requested_symbols):
     }
 
 
-def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe_history=None):
+def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe_history=None, trading_calendar=None):
     if not _valid_nonnegative_number(round_trip_cost_pct):
         raise ValueError("round_trip_cost_pct must be a finite, non-negative number")
     round_trip_cost_pct = float(round_trip_cost_pct)
@@ -354,6 +455,9 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         universe_history = load_universe_history(universe_history)
     history_quality = (universe_history_quality(universe_history, data, symbols)
                        if universe_history is not None else None)
+    if isinstance(trading_calendar, (str, os.PathLike)):
+        trading_calendar = load_trading_calendar(trading_calendar)
+    session_quality = {}
     for symbol in symbols:
         series = data.get(symbol)
         if not series:
@@ -368,6 +472,8 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
             continue
         quality = inspect_series_quality(series)
         data_quality[symbol] = quality
+        if trading_calendar is not None:
+            session_quality[symbol] = audit_trading_sessions(series, trading_calendar)
         if quality["errors"]:
             rejected_data_quality.append(symbol)
             continue
@@ -398,6 +504,8 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         "point_in_time_universe_applied": universe_history is not None,
         "universe_history_symbols": sorted(universe_history) if universe_history is not None else [],
         "universe_history_quality": history_quality,
+        "trading_calendar_applied": trading_calendar is not None,
+        "trading_session_quality": session_quality,
         "observations_excluded_outside_historical_universe": excluded_by_universe,
         "entry_rule": "next available daily session adjusted open after the signal close",
         "exit_rule": "adjusted daily close after 1, 3 or 5 held sessions",
@@ -422,6 +530,7 @@ def main(argv=None):
     ap.add_argument("--symbols", help="comma-separated symbols; default is every chart in the bundle")
     ap.add_argument("--json", action="store_true", help="print the full machine-readable report")
     ap.add_argument("--universe-history", help="CSV with symbol,effective_from,effective_to membership intervals; dates inclusive, blank end means still a member")
+    ap.add_argument("--trading-calendar", help="complete daily NSE equities calendar CSV with date,status,description; include every date in each covered year")
     ap.add_argument("--round-trip-cost-pct", type=float, default=0.0,
                     help="user-supplied all-in round-trip cost as %% of entry value; includes estimated fees, taxes and slippage")
     a = ap.parse_args(argv)
@@ -433,7 +542,7 @@ def main(argv=None):
         if not _valid_nonnegative_number(a.round_trip_cost_pct):
             raise scan.ScanError("--round-trip-cost-pct must be a finite, non-negative number")
         report = evaluate(data, symbols, round_trip_cost_pct=a.round_trip_cost_pct,
-                          universe_history=a.universe_history)
+                          universe_history=a.universe_history, trading_calendar=a.trading_calendar)
         report["failed_charts"] = errors
         if a.json:
             print(json.dumps(report, indent=2))
@@ -460,6 +569,18 @@ def main(argv=None):
                           % len(quality["per_symbol_chart_coverage_gaps"]))
             else:
                 print("WARNING: no point-in-time universe supplied; results may have survivorship bias.")
+            if a.trading_calendar:
+                print("NSE equities trading calendar applied: %s" % a.trading_calendar)
+                for symbol, quality in report["trading_session_quality"].items():
+                    if quality["status"] == "not_checked":
+                        print("WARNING: %s session audit not checked; calendar coverage missing for years %s."
+                              % (symbol, quality.get("missing_calendar_years", [])))
+                    elif quality["missing_trading_sessions"] or quality["bars_on_closed_dates"]:
+                        print("WARNING: %s session audit found %d missing expected session(s) and %d bar(s) on closed dates."
+                              % (symbol, len(quality["missing_trading_sessions"]),
+                                 len(quality["bars_on_closed_dates"])))
+            else:
+                print("WARNING: no official trading calendar supplied; four-day date gaps remain approximate.")
             if report["symbols_rejected_missing_adjusted_close"]:
                 print("Rejected (no adjusted-close data): %s" % ", ".join(report["symbols_rejected_missing_adjusted_close"]))
             if report["symbols_rejected_incomplete_adjusted_close"]:
