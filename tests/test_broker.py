@@ -88,6 +88,8 @@ class TicketShape(unittest.TestCase):
         legs = ticket.legs(reliance())
         self.assertEqual([r for r, _ in legs], ["entry", "stop-loss", "take-profit"])
         self.assertEqual([p for _, p in legs], [ENTRY_CALL, STOP_CALL, TARGET_CALL])
+        partial = ticket.legs(reliance(), quantity=7)
+        self.assertEqual([p["quantity"] for _, p in partial[1:]], [7, 7])
         self.assertEqual([r for r, _ in ticket.legs(reliance(stop_loss=None, take_profit=None))], ["entry"])
 
     def test_a_stop_limit_leg_sits_a_few_ticks_under_its_trigger(self):
@@ -225,13 +227,13 @@ class Flow(unittest.TestCase):
         for part in RELIANCE_PLAIN.split(" / "):
             self.assertIn("  " + part + "\n", text)
         self.assertIn("READY: nse-risk PASS", text)
-        for call in (ENTRY_CALL, STOP_CALL, TARGET_CALL):
-            for k, v in call.items():
-                self.assertIn('"%s": %s' % (k, json.dumps(v)), text)
+        for k, v in ENTRY_CALL.items():
+            self.assertIn('"%s": %s' % (k, json.dumps(v)), text)
         self.assertIn("entry:", text)
-        self.assertIn("stop-loss:", text)
-        self.assertIn("take-profit:", text)
-        self.assertIn("only AFTER the entry has filled", text)
+        self.assertNotIn("stop-loss:", text)
+        self.assertNotIn("take-profit:", text)
+        self.assertIn("Exit orders are NOT shown yet", text)
+        self.assertIn("ticket.py exits --index 1 --filled-qty Q", text)
         self.assertIn("do NOT cancel each other", text)
         self.assertIn("Paper mode: nothing is placed", text)
         self.assertNotIn('"plan"', text)
@@ -256,7 +258,8 @@ class Flow(unittest.TestCase):
                                       "--filled-qty", "23", "--filled-price", "1432.60", "--portfolio", self.pf,
                                       now="2026-10-30 09:42"))
         self.assertEqual(code, 0)
-        self.assertIn("Now place the stop-loss and the take-profit", text)
+        self.assertIn("Entry fill recorded: 23 shares", text)
+        self.assertIn("ticket.py exits --index 1 --filled-qty 23", text)
         st = self.state_doc()
         self.assertEqual([r["status"] for r in st["orders"]], ["approved", "placed", "filled"])
         appr, plc = st["orders"][0], st["orders"][1]
@@ -279,6 +282,47 @@ class Flow(unittest.TestCase):
         res = check.check([reliance()], {"budget": 100000}, state=st, now=check.parse_now("2026-10-30 10:30"))
         self.assertIn("already placed today", " ".join(res["results"][0]["reasons"]))
         self.assertEqual((res["today"]["entries_placed"], res["today"]["loss_at_risk"]), (1, 484.15))
+
+    def test_partial_fill_exits_use_only_the_confirmed_quantity(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        code, text, _ = run(self.args("result", "--index", "1", "--status", "placed",
+                                      "--filled-qty", "7", "--filled-price", "1432.60",
+                                      "--portfolio", self.pf))
+        self.assertEqual(code, 0)
+        self.assertIn("Entry fill recorded: 7 shares", text)
+        code, text, _ = run(self.args("exits", "--index", "1", "--filled-qty", "7"))
+        self.assertEqual(code, 0)
+        self.assertIn('"quantity": 7', text)
+        self.assertNotIn('"quantity": 23', text)
+        self.assertNotIn('"transaction_type": "BUY"', text)
+        self.assertIn("EXIT ORDERS ONLY", text)
+
+    def test_exit_quantity_must_be_positive_whole_and_not_over_order_qty(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed"))
+        for bad in ("0", "-1", "2.5", "24", "nan"):
+            code, _, err = run(self.args("exits", "--index", "1", "--filled-qty", bad))
+            self.assertEqual(code, 1, bad)
+            self.assertNotIn("Traceback", err)
+
+    def test_no_exit_tickets_until_entry_is_recorded_placed(self):
+        self.run_risk()
+        code, _, err = run(self.args("exits", "--index", "1", "--filled-qty", "7"))
+        self.assertEqual(code, 1)
+        self.assertIn("record the entry as placed first", err)
+
+    def test_result_rejects_invalid_or_incomplete_fill_details(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        for extra in (["--filled-qty", "24", "--filled-price", "100"],
+                      ["--filled-qty", "2.5", "--filled-price", "100"],
+                      ["--filled-qty", "7"], ["--filled-price", "100"],
+                      ["--filled-qty", "7", "--filled-price", "0"]):
+            code, _, err = run(self.args("result", "--index", "1", "--status", "placed", *extra))
+            self.assertEqual(code, 1, extra)
+            self.assertNotIn("Traceback", err)
 
     def test_a_paper_risk_pass_cannot_be_reused_after_switching_to_live(self):
         self.assertEqual(self.run_risk(), 0)
@@ -315,7 +359,7 @@ class Flow(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("place the entry with your broker connector's order tool", text)
         self.assertEqual(json.loads(text[text.index("{"):text.rindex("}") + 1]), ENTRY_CALL)
-        self.assertIn("After the entry fills, place the stop-loss and take-profit legs", text)
+        self.assertIn("After the entry fills, generate exits with", text)
         self.assertFalse(self.state_doc()["orders"][0]["paper"])
         code, text, _ = run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "2610300001234"))
         self.assertEqual(code, 0)
@@ -337,7 +381,8 @@ class Flow(unittest.TestCase):
         self.assertEqual((t["broker"], t["paper"], t["has_legs"], t["max_loss"], t["stop"]),
                          ("zerodha", True, True, 484.15, 1411.55))
         self.assertEqual(t["tool_input"], ENTRY_CALL)
-        self.assertEqual([l["role"] for l in t["legs"]], ["entry", "stop-loss", "take-profit"])
+        self.assertEqual([l["role"] for l in t["legs"]], ["entry"])
+        self.assertTrue(t["exits_available_after_fill"])
         self.assertEqual(t["fingerprint"], check.fingerprint(reliance()))
         self.assertEqual(t["plain"], RELIANCE_PLAIN)
 
