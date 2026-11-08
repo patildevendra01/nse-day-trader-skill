@@ -106,7 +106,7 @@ python3 "${CLAUDE_SKILL_DIR}/evaluate.py" --offline /path/to/daily-chart-bundle.
 python3 "${CLAUDE_SKILL_DIR}/evaluate.py" --offline /path/to/chart-folder --symbols RELIANCE,TCS
 ```
 
-The evaluator identifies each daily setup using data available at that signal-day close, enters at the next available daily bar's open, and measures the close after 1, 3 and 5 held sessions. It reports win rate, average/median return, best/worst return, and maximum favourable/adverse price excursion for each observed setup. The JSON output includes every observation for independent review.
+The evaluator identifies each daily setup using data available at that signal-day close, enters at the next available daily bar's open, and measures the close after 1, 3 and 5 held sessions. If the newest input candle belongs to today's still-open NSE session, it is excluded so a partial candle cannot create a signal or outcome. It reports win rate, average/median return, best/worst return, and maximum favourable/adverse price excursion for each observed setup. The JSON output includes every observation for independent review.
 
 This is a research diagnostic, not a trading strategy or a prediction. It does not include brokerage, taxes, slippage, bid-ask spread, market impact or liquidity constraints; it can have survivorship bias if the input universe contains only today's listed stocks. Use a multi-year point-in-time universe and corporate-action-adjusted OHLC data before drawing conclusions. It evaluates daily setups only, not intraday ORB. Never change entry, exit or risk rules based only on a small sample.
 
