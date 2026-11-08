@@ -18,6 +18,7 @@ def make_series(closes):
         "h": [c * 1.02 for c in closes],
         "l": [c * 0.97 for c in closes],
         "c": list(closes),
+        "adjclose": [c * 0.98 for c in closes],
         "v": [100000] * len(closes),
         "meta": {}
     }
@@ -48,6 +49,24 @@ class Evaluation(unittest.TestCase):
         self.assertTrue(all(t["signal_date"] < today.isoformat() for t in trades))
         self.assertTrue(all(t["entry_date"] < today.isoformat() for t in trades))
         self.assertTrue(all(t["exit_date"] < today.isoformat() for t in trades))
+
+    def test_returns_use_adjusted_ohlc_for_dividends_and_splits(self):
+        closes = [100 + i * 0.1 for i in range(40)]
+        series = make_series(closes)
+        trades, _ = evaluate.evaluate_series(series)
+        one = next(t for t in trades if t["horizon"] == 1)
+        self.assertAlmostEqual(one["entry"], series["o"][1] * 0.98)
+        self.assertAlmostEqual(one["exit"], series["c"][1] * 0.98)
+
+    def test_missing_adjusted_close_is_rejected(self):
+        closes = [100 + i * 0.1 for i in range(40)]
+        series = make_series(closes)
+        series.pop("adjclose")
+        trades, skipped = evaluate.evaluate_series(series)
+        self.assertEqual(trades, [])
+        report = evaluate.evaluate({"TEST": series})
+        self.assertEqual(report["symbols_loaded"], 0)
+        self.assertEqual(report["symbols_rejected_missing_adjusted_close"], ["TEST"])
 
     def test_no_future_bars_are_counted_as_trades(self):
         closes = [100 + i * 0.1 for i in range(30)]
