@@ -298,6 +298,19 @@ class Flow(unittest.TestCase):
         approval = self.state_doc()["orders"][0]
         self.assertEqual(approval["max_loss"], 900.25)
         self.assertEqual(approval["stop"], 1411.55)
+    def test_entry_fill_updates_daily_loss_to_actual_fill_price(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        code, text, err = run(self.args("result", "--index", "1", "--status", "placed",
+                                      "--filled-qty", "23", "--filled-price", "1440.00",
+                                      "--portfolio", self.pf))
+        self.assertEqual(code, 0, err)
+        self.assertIn("actual fill risk: ₹654.35", text)
+        st = self.state_doc()
+        latest_entry = ticket.latest(st, ticket.fingerprint(reliance()), TODAY)
+        self.assertEqual(latest_entry["max_loss"], 654.35)
+        res = check.check([reliance()], {"budget": 100000}, state=st, now=check.parse_now("2026-10-30 10:30"))
+        self.assertEqual(res["today"]["loss_at_risk"], 654.35)
     def test_partial_fill_exits_use_only_the_confirmed_quantity(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
@@ -346,6 +359,7 @@ class Flow(unittest.TestCase):
         latest_entry = ticket.latest(st, ticket.fingerprint(reliance()), TODAY)
         self.assertEqual(latest_entry["filled_qty"], 12)
         self.assertEqual(latest_entry["filled_price"], 1433.10)
+        self.assertEqual(latest_entry["max_loss"], 258.60)
         code, text, _ = run(self.args("exits", "--index", "1", "--filled-qty", "12"))
         self.assertEqual(code, 0)
         self.assertIn('"quantity": 12', text)
