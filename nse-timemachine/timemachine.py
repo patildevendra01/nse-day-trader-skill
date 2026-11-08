@@ -91,6 +91,9 @@ INTERVAL = 300       # 5-minute bars, in seconds
 SESSION_BARS = 75    # 09:15 to 15:30 in 5-minute bars
 OPEN_MIN = 9 * 60 + 15
 CLOSE_MIN = 15 * 60 + 30
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_OPEN_MIN = 14 * 60 + 20
+MUHURAT_CLOSE_MIN = 15 * 60 + 15
 TICK = 0.05          # the NSE price tick for most stocks; a plan may carry its own "tick"
 MIN_SESSIONS = 20
 SAMPLE_PATHS = 160
@@ -286,14 +289,23 @@ def parse_bars(result, now_utc):
             continue
         start = utc_of(ts)
         local = to_ist(start)
-        mins = local.hour * 60 + local.minute - OPEN_MIN
-        if mins < 0 or mins >= SESSION_BARS * 5:
-            dropped["outside_hours"] += 1
-            continue
+        day = local.date().isoformat()
+        minute = local.hour * 60 + local.minute
+        if day == MUHURAT_DATE:
+            if minute < MUHURAT_OPEN_MIN or minute >= MUHURAT_CLOSE_MIN:
+                dropped["outside_hours"] += 1
+                continue
+            slot = (minute - OPEN_MIN) // 5
+        else:
+            mins = minute - OPEN_MIN
+            if mins < 0 or mins >= SESSION_BARS * 5:
+                dropped["outside_hours"] += 1
+                continue
+            slot = mins // 5
         if start + datetime.timedelta(seconds=INTERVAL) > as_of:
             dropped["not_complete"] += 1
             continue
-        bars[ts] = {"date": local.date().isoformat(), "slot": mins // 5, "start": local.strftime("%H:%M"),
+        bars[ts] = {"date": day, "slot": slot, "start": local.strftime("%H:%M"),
                     "o": o, "h": h, "l": l, "c": c, "v": v or 0}
     return meta, [bars[t] for t in sorted(bars)], dropped
 
@@ -337,14 +349,15 @@ def pct(a, q):
     return a[min(len(a) - 1, int(q * len(a)))]
 
 
-def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy"):
-    """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py."""
+def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy",
+             slot_min=1, slot_max=SESSION_BARS - 1):
+    """Monte Carlo replays of bars k+1..last, sampling only valid session slots."""
     long = side == "buy"
     risk = (entry - stop) if long else (stop - entry)
     r_target = round(((target - entry) if long else (entry - target)) / risk, 4)
 
     def slot(rng, i):
-        return i if window == 0 else min(SESSION_BARS - 1, max(1, i + rng.randint(-window, window)))
+        return i if window == 0 else min(slot_max, max(slot_min, i + rng.randint(-window, window)))
 
     rng = random.Random(seed)
     choice = rng.choice
@@ -442,9 +455,9 @@ def snap_tick(x, tick=TICK):
     return round(round(x * 100, 4) / t) * t / 100.0
 
 
-def opening_range(D, n):
-    """(high, low) of the first n bars of a session given as {slot: bar} or a list."""
-    rows = [D[i] for i in range(n)]
+def opening_range(D, n, start=0):
+    """(high, low) of n bars from start, given as {slot: bar} or a list."""
+    rows = [D[i] for i in range(start, start + n)]
     return max(b["h"] for b in rows), min(b["l"] for b in rows)
 
 
@@ -466,8 +479,9 @@ def history_replay(sessions, rule, last, side="buy"):
     n = rule["or_minutes"] // 5
     trades = []
     for d, D in sessions:
-        oh, ol = opening_range(D, n)
-        kk = next((i for i in range(n, last + 1) if (D[i]["c"] > oh if long else D[i]["c"] < ol)), None)
+        start = rule.get("session_open_slot", 0)
+        oh, ol = opening_range(D, n, start)
+        kk = next((i for i in range(start + n, last + 1) if (D[i]["c"] > oh if long else D[i]["c"] < ol)), None)
         if kk is None:
             continue
         e = snap_tick(D[kk]["c"], rule.get("tick", TICK))
@@ -555,6 +569,10 @@ def normalize_plan(raw, src="flags"):
         date = datetime.date.fromisoformat(str(raw.get("date") or "")).isoformat()
     except ValueError:
         raise TMError("the plan needs a date like 2026-10-19, got %r" % raw.get("date"))
+    session_open = MUHURAT_OPEN_MIN if date == MUHURAT_DATE else OPEN_MIN
+    session_close = MUHURAT_CLOSE_MIN if date == MUHURAT_DATE else CLOSE_MIN
+    session_bars = (session_close - session_open) // 5
+    session_offset = (session_open - OPEN_MIN) // 5
     entry, stop, target = (_num(raw.get(k), k) for k in ("entry", "stop", "target"))
     tick = _num(raw.get("tick", TICK), "tick")
     long = side == "buy"
@@ -565,37 +583,38 @@ def normalize_plan(raw, src="flags"):
     k = None
     if raw.get("entry_time"):
         close_min = parse_clock(raw["entry_time"], "entry_time")
-        if (close_min - OPEN_MIN) % 5:
-            raise TMError("entry_time %s is not on the 5-minute grid (use the bar's close, e.g. 10:15)"
-                          % raw["entry_time"])
-        k = (close_min - OPEN_MIN) // 5 - 1
+        if close_min < session_open + 5 or close_min > session_close or (close_min - session_open) % 5:
+            raise TMError("entry_time %s is outside this session or not on its 5-minute grid" % raw["entry_time"])
+        k = (close_min - session_open) // 5 - 1
     if raw.get("entry_bar") is not None:
         try:
             kb = int(raw["entry_bar"])
         except (TypeError, ValueError):
             raise TMError("entry_bar must be a bar number, got %r" % raw["entry_bar"])
+        if not 0 <= kb <= session_bars - 2:
+            raise TMError("entry_bar must leave at least one 5-minute bar to replay in this session")
         if k is not None and kb != k:
             raise TMError("the plan disagrees with itself: entry_bar %d but entry_time %s is bar %d"
                           % (kb, raw["entry_time"], k))
         k = kb
     if k is None:
         raise TMError("the plan needs entry_time (the entry bar's close, e.g. 10:15) or entry_bar")
-    if not 0 <= k <= SESSION_BARS - 2:
+    if not 0 <= k <= session_bars - 2:
         raise TMError("the entry must close between %s and %s IST to leave bars to replay (got %s)"
-                      % (clock24(OPEN_MIN + 5), clock24(OPEN_MIN + 5 * (SESSION_BARS - 1)),
-                         clock24(OPEN_MIN + 5 * (k + 1))))
+                      % (clock24(session_open + 5), clock24(session_close - 5), clock24(session_open + 5 * (k + 1))))
     orng = raw.get("opening_range") or {}
     or_min = orng.get("minutes", 15) if isinstance(orng, dict) else 15
     try:
         or_min = int(or_min)
     except (TypeError, ValueError):
         raise TMError("opening_range.minutes must be a number")
-    if or_min < 5 or or_min % 5 or or_min >= SESSION_BARS * 5:
-        raise TMError("opening_range.minutes must be a multiple of 5 (got %s)" % or_min)
+    if or_min < 5 or or_min % 5 or or_min >= session_bars * 5:
+        raise TMError("opening_range.minutes must be a multiple of 5 and shorter than this session (got %s)" % or_min)
     risk = (entry - stop) if long else (stop - entry)
     return {
         "symbol": sym, "side": side, "date": date, "setup": str(raw.get("setup") or "orb"),
-        "entry": entry, "entry_time": clock24(OPEN_MIN + 5 * (k + 1)), "entry_bar": k,
+        "entry": entry, "entry_time": clock24(session_open + 5 * (k + 1)), "entry_bar": k,
+        "bar_slot": session_offset + k, "session_open_slot": session_offset, "session_close": clock24(session_close),
         "stop": stop, "target": target, "risk_per_share": round(risk, 2),
         "target_r": round(((target - entry) if long else (entry - target)) / risk, 2),
         "opening_range": dict(orng, minutes=or_min) if isinstance(orng, dict) else {"minutes": or_min},
@@ -614,14 +633,15 @@ def resolve_rule(plan, entry_day):
     long = plan["side"] == "buy"
     n = plan["opening_range"]["minutes"] // 5
     tick = plan.get("tick", TICK)
+    start = plan.get("session_open_slot", 0)
     rule = {"setup": "orb", "or_minutes": plan["opening_range"]["minutes"], "stop_rule": plan["stop_rule"],
-            "target_r": plan["target_r"], "tick": tick,
+            "target_r": plan["target_r"], "tick": tick, "session_open_slot": start,
             "stop_pct": round(100.0 * plan["risk_per_share"] / plan["entry"], 4)}
     far = "or_low" if long else "or_high"
     if rule["stop_rule"] == "auto":
         rule["stop_rule"] = "pct"
-        if all(i in entry_day for i in range(n)):
-            oh, ol = opening_range(entry_day, n)
+        if all(i in entry_day for i in range(start, start + n)):
+            oh, ol = opening_range(entry_day, n, start)
             if abs(stop_tick((oh + ol) / 2, long, tick) - plan["stop"]) < 0.005:
                 rule["stop_rule"] = "or_mid"
             elif abs(stop_tick(ol if long else oh, long, tick) - plan["stop"]) < 0.005:
@@ -706,10 +726,15 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("the data has %s bars; the time machine needs 5-minute bars" % gran)
     if not bars:
         raise TMError("no complete 5-minute bars for %s in the data" % sym)
-    k = plan["entry_bar"]
-    until_min = CLOSE_MIN if until is None else parse_clock(until, "--until")
-    if (until_min - OPEN_MIN) % 5 or until_min > CLOSE_MIN:
-        raise TMError("--until must be on the 5-minute grid and no later than %s (the close)" % clock24(CLOSE_MIN))
+    k = plan["bar_slot"]
+    session_open = OPEN_MIN + 5 * plan.get("session_open_slot", 0)
+    session_close = parse_clock(plan.get("session_close", clock24(CLOSE_MIN)), "session close")
+    if until is None:
+        until_min = parse_clock(plan["flat_by"], "--until") if plan.get("session_open_slot", 0) and plan.get("flat_by") else session_close
+    else:
+        until_min = parse_clock(until, "--until")
+    if (until_min - OPEN_MIN) % 5 or until_min < session_open + 5 or until_min > session_close:
+        raise TMError("--until must be on the 5-minute grid between this session's open and close (%s)" % clock24(session_close))
     last = (until_min - OPEN_MIN) // 5 - 1
     if last <= k:
         raise TMError("--until %s leaves nothing to replay after the %s entry" % (clock24(until_min),
@@ -731,7 +756,9 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("only %d full session(s) of %s before %s in the data; the time machine needs at least %d"
                       % (len(sessions), sym, plan["date"], MIN_SESSIONS))
     pool = build_pool(sessions)
-    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"])
+    session_open_slot = plan.get("session_open_slot", 0)
+    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window,
+                  plan["side"], slot_min=max(1, session_open_slot + 1), slot_max=last)
     mc = dict(mc, until=clock24(until_min), pool_sessions=len(sessions), pool_from=sessions[0][0],
               pool_to=sessions[-1][0],
               band_times=[clock24(OPEN_MIN + 5 * (j + 1)) for j in range(k, last + 1)])
