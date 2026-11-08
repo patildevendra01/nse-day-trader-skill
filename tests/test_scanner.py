@@ -136,7 +136,8 @@ class Symbols(unittest.TestCase):
     def test_yahoo_symbols(self):
         self.assertEqual(scan.to_yahoo("RELIANCE"), "RELIANCE.NS")
         self.assertEqual(scan.to_yahoo("m&m"), "M&M.NS")
-        self.assertEqual(scan.to_yahoo("BAJAJ-AUTO"), "BAJAJ-AUTO.NS")    # the hyphen stays: no US "." -> "-" rule
+        self.assertEqual(scan.to_yahoo("BAJAJ-AUTO"), "BAJAJ-AUTO.NS")
+        self.assertEqual(scan.to_yahoo("^NSEI"), "^NSEI")    # the hyphen stays: no US "." -> "-" rule
         self.assertEqual(scan.to_yahoo("TCS.NS"), "TCS.NS")
         self.assertEqual(scan.bare("RELIANCE.NS"), "RELIANCE")
         self.assertEqual(scan.bare("m&m"), "M&M")
@@ -347,6 +348,20 @@ class Daily(unittest.TestCase):
         self.assertEqual(scan.last_completed_session(scan.parse_now("2026-10-30 09:00")), D(2026, 10, 29))
         self.assertEqual(scan.last_completed_session(scan.parse_now("2026-10-30 15:30")), D(2026, 10, 30))
         self.assertEqual(scan.last_completed_session(scan.parse_now("2026-11-09 09:00")), D(2026, 11, 8))
+
+    def test_ranking_trend_and_market_regime(self):
+        rising = [100.0 + i for i in range(220)]
+        falling = [320.0 - i for i in range(220)]
+        self.assertGreater(scan.ema(rising, 50), scan.ema(rising, 200))
+        self.assertEqual(scan.market_trend(rising), "bullish")
+        self.assertEqual(scan.market_trend(falling), "bearish")
+        score, trend, relvol, reasons = scan.rank_candidate(
+            {"t": [], "v": []}, rising, [], ["breakout_20d"],
+            {"rsi": 60.0, "high20": rising[-2]}, "bullish")
+        self.assertEqual(trend, "uptrend")
+        self.assertIsNone(relvol)
+        self.assertGreaterEqual(score, 70)
+        self.assertTrue(any("Nifty 50 bullish" in x for x in reasons))
 
     def test_rsi_matches_wilders_example(self):
         self.assertIsNone(scan.rsi([1.0] * 10))
