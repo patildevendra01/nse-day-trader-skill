@@ -707,8 +707,12 @@ def cmd_result(a):
     order = _pick(orders, a.index)
     fp = fingerprint(order)
     rec = latest(state, fp, today)
-    if not rec or rec.get("status") != "approved":
-        raise TicketError("order %d has no yes recorded today; a result can only follow an approval" % a.index)
+    awaiting_first_fill = bool(rec and rec.get("status") == "placed"
+                               and rec.get("kind") == "entry"
+                               and rec.get("filled_qty") is None and a.status == "placed")
+    if not rec or (rec.get("status") != "approved" and not awaiting_first_fill):
+        raise TicketError("order %d has no approval awaiting a result, or its result is already recorded; "
+                          "use reconcile-fill for later partial fills" % a.index)
     if bool(a.filled_qty) != bool(a.filled_price):
         raise TicketError("--filled-qty and --filled-price must be supplied together")
     filled_qty = None
@@ -721,7 +725,7 @@ def cmd_result(a):
             raise TicketError("--filled-price must be a positive number")
     new = {"at": ist_iso(now), "date": today, "index": a.index, "fingerprint": fp, "symbol": rec["symbol"],
            "side": rec["side"], "plain": rec["plain"], "status": a.status}
-    for k in ("qty", "kind", "max_loss", "stop"):
+    for k in ("qty", "kind", "max_loss", "stop", "broker_order_id", "note"):
         if rec.get(k) is not None:
             new[k] = rec[k]
     if cfg.get("paper", True):
@@ -744,8 +748,8 @@ def cmd_result(a):
     if a.status == "placed" and filled_qty is not None:
         print("Added the fill to %s." % a.portfolio)
     elif a.status == "placed":
-        print("When it fills, record it: ticket.py fill --symbol %s --side %s --qty Q --price P"
-              % (rec["symbol"], rec["side"]))
+        print("When the first fill is confirmed, attach it to this order with:")
+        print("  ticket.py result --index %d --status placed --filled-qty Q --filled-price P" % a.index)
     if a.status == "placed" and rec.get("kind") == "entry" and has_legs(order):
         if filled_qty is not None:
             print("Entry fill recorded: %d shares. Confirm the broker's current position, then generate exits:"
