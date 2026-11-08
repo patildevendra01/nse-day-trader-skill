@@ -38,7 +38,9 @@ class Evaluation(unittest.TestCase):
     def test_incomplete_current_session_bar_is_excluded(self):
         closes = [100 + i * 0.1 for i in range(40)]
         series = make_series(closes)
-        today = scan.ts_to_ist(series["t"][-1]).date()
+        today = datetime.date(2025, 2, 10)  # Monday
+        series["t"][-1] = int((scan.ist_to_utc(datetime.datetime.combine(
+            today, datetime.time(0, 0))) - datetime.datetime(1970, 1, 1)).total_seconds())
         now_utc = scan.ist_to_utc(datetime.datetime.combine(
             today, datetime.time(10, 0)))
         trades, skipped = evaluate.evaluate_series(series, now_utc=now_utc)
