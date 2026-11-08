@@ -129,6 +129,42 @@ class Evaluation(unittest.TestCase):
             with self.assertRaises(ValueError):
                 evaluate.evaluate_series(series, round_trip_cost_pct=invalid)
 
+    def test_point_in_time_universe_filters_signal_dates(self):
+        data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
+        baseline = evaluate.evaluate(data)
+        signal_day = baseline["observations"][0]["signal_date"]
+        day = datetime.date.fromisoformat(signal_day)
+        report = evaluate.evaluate(data, universe_history={"TEST": [(day, day)]})
+        self.assertTrue(report["point_in_time_universe_applied"])
+        self.assertGreater(report["observations_excluded_outside_historical_universe"], 0)
+        self.assertTrue(report["observations"])
+        self.assertEqual({x["signal_date"] for x in report["observations"]}, {signal_day})
+
+    def test_universe_history_csv_validates_intervals(self):
+        import os
+        import tempfile
+        content = "symbol,effective_from,effective_to\\nTEST,2025-01-01,2025-01-31\\nTEST,2025-02-01,\\n"
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
+            handle.write(content)
+            path = handle.name
+        try:
+            self.assertEqual(len(evaluate.load_universe_history(path)["TEST"]), 2)
+        finally:
+            os.unlink(path)
+
+    def test_universe_history_csv_rejects_overlapping_intervals(self):
+        import os
+        import tempfile
+        content = "symbol,effective_from,effective_to\\nTEST,2025-01-01,2025-02-01\\nTEST,2025-02-01,\\n"
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
+            handle.write(content)
+            path = handle.name
+        try:
+            with self.assertRaises(scan.ScanError):
+                evaluate.load_universe_history(path)
+        finally:
+            os.unlink(path)
+
     def test_evaluate_is_offline_and_reports_limitations(self):
         data = {"TEST": make_series([100 + i * 0.2 for i in range(45)])}
         report = evaluate.evaluate(data)
