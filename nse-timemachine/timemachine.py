@@ -636,8 +636,10 @@ def resolve_rule(plan, entry_day):
     tick = plan.get("tick", TICK)
     start = plan.get("session_open_slot", 0)
     rule = {"setup": "orb", "or_minutes": plan["opening_range"]["minutes"], "stop_rule": plan["stop_rule"],
-            "target_r": plan["target_r"], "tick": tick, "session_open_slot": start,
+            "target_r": plan["target_r"], "tick": tick,
             "stop_pct": round(100.0 * plan["risk_per_share"] / plan["entry"], 4)}
+    if start:
+        rule["session_open_slot"] = start
     far = "or_low" if long else "or_high"
     if rule["stop_rule"] == "auto":
         rule["stop_rule"] = "pct"
