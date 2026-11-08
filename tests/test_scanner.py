@@ -663,9 +663,16 @@ class Cli(unittest.TestCase):
         self.assertEqual((doc["mode"], doc["universe"], doc["scanned"], doc["failed"]), ("daily", 10, 7, 3))
         self.assertEqual(doc["as_of"], "2026-10-29 close")
         self.assertEqual(doc["created_at"], "2026-10-30T03:30:00Z")             # 09:00 IST
-        self.assertEqual([h["symbol"] for h in doc["hits"]], ["M&M", "HDFCBANK", "SBIN", "INFY", "BAJAJ-AUTO"])
-        self.assertEqual(doc["hits"][0], {"symbol": "M&M", "setups": ["bull_flag"], "classification": "momentum_watch", "price": 3796.25,
-                                          "close_date": "2026-10-29", "rsi": 80.8, "volume": 1800000})
+        self.assertEqual({h["symbol"] for h in doc["hits"]}, {"M&M", "HDFCBANK", "SBIN", "INFY", "BAJAJ-AUTO"})
+        scores = [h["score"] for h in doc["hits"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        for hit in doc["hits"]:
+            self.assertIn("score_reasons", hit)
+            self.assertIn("trend", hit)
+            self.assertIn("market_regime", hit)
+        mm = next(h for h in doc["hits"] if h["symbol"] == "M&M")
+        self.assertEqual((mm["setups"], mm["classification"], mm["price"], mm["close_date"], mm["rsi"], mm["volume"]),
+                         (["bull_flag"], "momentum_watch", 3796.25, "2026-10-29", 80.8, 1800000))
 
         # the 10:15 opening-range scan
         code, text, _ = run(["orb", "--offline", WALL, "--now", "2026-10-30 10:15", "--min-price", "0",
