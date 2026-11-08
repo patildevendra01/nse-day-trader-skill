@@ -337,7 +337,7 @@ class Daily(unittest.TestCase):
 
     def test_stale_daily_charts_are_not_used(self):
         stale = dict(self.data["LT"])
-        stale["t"] = [stamp - 86400 for stamp in stale["t"]]
+        stale["t"] = [stamp - 2 * 86400 for stamp in stale["t"]]
         hits, counts, last = scan.scan_daily({"LT": stale}, ["LT"], scan.parse_now("2026-10-30 09:00"), 0, 0)
         self.assertEqual(hits, [])
         self.assertEqual(last, None)
@@ -649,7 +649,7 @@ class Cli(unittest.TestCase):
         self.assertEqual(doc["as_of"], "2026-10-29 close")
         self.assertEqual(doc["created_at"], "2026-10-30T03:30:00Z")             # 09:00 IST
         self.assertEqual([h["symbol"] for h in doc["hits"]], ["M&M", "HDFCBANK", "SBIN", "INFY", "BAJAJ-AUTO"])
-        self.assertEqual(doc["hits"][0], {"symbol": "M&M", "setups": ["bull_flag"], "price": 3796.25,
+        self.assertEqual(doc["hits"][0], {"symbol": "M&M", "setups": ["bull_flag"], "classification": "momentum_watch", "price": 3796.25,
                                           "close_date": "2026-10-29", "rsi": 80.8, "volume": 1800000})
 
         # the 10:15 opening-range scan
