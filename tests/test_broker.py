@@ -693,6 +693,29 @@ class Flow(unittest.TestCase):
             pf = json.load(fh)
         self.assertEqual(pf["positions"][0]["shares"], 5)
 
+    def test_fill_sell_blocks_when_position_shares_do_not_match_lots(self):
+        pf = {"cash": 0, "positions": [{"ticker": "ITC", "shares": 30, "lots": [
+            {"id": "ITC-1", "date": "2026-01-02", "shares": 20, "cost": 8000.0}]}]}
+        with open(self.pf, "w") as fh:
+            json.dump(pf, fh)
+        before = open(self.pf).read()
+        code, _, err = run(["fill", "--symbol", "ITC", "--side", "sell", "--qty", "5", "--price", "400",
+                            "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("portfolio integrity check failed", err)
+        with open(self.pf) as fh:
+            self.assertEqual(fh.read(), before)
+
+    def test_fill_sell_rejects_invalid_lot_records(self):
+        pf = {"cash": 0, "positions": [{"ticker": "ITC", "shares": 10, "lots": [
+            {"id": "ITC-1", "date": "2026-01-02", "shares": 10, "cost": float("nan")}]}]}
+        with open(self.pf, "w") as fh:
+            json.dump(pf, fh)
+        code, _, err = run(["fill", "--symbol", "ITC", "--side", "sell", "--qty", "1", "--price", "400",
+                            "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("portfolio integrity check failed", err)
+
     def test_fill_sell_relieves_the_oldest_lot(self):
         pf = {"cash": 0, "positions": [{"ticker": "ITC", "shares": 30, "lots": [
             {"id": "ITC-1", "date": "2025-01-02", "shares": 20, "cost": 8000.0},
