@@ -66,9 +66,9 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    random, and scale it to the current price. Bar by bar, it checks the stop
    first, then the target. A bar that touches both counts as the stop.
 3. **10,000 replays** give four odds. Target first. Stop first. Neither,
-   which means the trade was still open at `--until` (default 15:30, the
-   close). Green, which means target
-   first or above the entry at `--until`.
+   which means the trade was still open at `--until` (default 15:30 on regular
+   days; on the Muhurat date it uses the plan's `flat_by` when present,
+   otherwise 15:15). Green means target first or above the entry at `--until`.
    R is +1 at a 1R target, -1 at the stop, and otherwise the distance from
    the entry at `--until` divided by the risk. A gap through the stop still
    counts as -1R here. A real fill can be worse.
