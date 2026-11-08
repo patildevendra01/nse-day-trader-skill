@@ -84,10 +84,14 @@ decision. The exit tickets are generated only after the fill quantity is known.
 But:
 
 - **The normal `show` command prints the entry only.** It withholds exit tickets
-  until the entry fill is confirmed. After checking the broker's current net
-  position, run `ticket.py exits --index N --filled-qty Q`; this prints exit
-  orders only, sized to Q. A partial fill must use the actual filled quantity,
-  not the originally requested quantity. A sell placed first or for too many
+  until an entry fill is recorded with `result --status placed --filled-qty Q
+  --filled-price P`. The exits command requires its quantity to exactly match
+  that recorded fill; a manually typed or larger quantity is rejected. After
+  recording the fill, check the broker's current net position and run
+  `ticket.py exits --index N --filled-qty Q`. A partial fill must use the
+  actual filled quantity, not the originally requested quantity. If the broker
+  position changes after recording, do not generate exits from an old fill
+  record; reconcile the fill record first. A sell placed first or for too many
   shares could open a short MIS position.
 - **The two exit orders do not cancel each other.** When one fills, cancel
   the other yourself (a leftover limit sell could later sell shares you no
@@ -193,14 +197,14 @@ money). If the connector has no order tool, stay in paper mode.
    `--status failed` with `--note`. A failed order is not retried without a new
    check and a new yes. The log keeps the entry's max loss for nse-risk's daily
    limit.
-6. Do NOT use exit quantities from the original ticket. Once the entry has
-   filled, check the broker's current net position (including partial fills),
-   then run `ticket.py exits --index N --filled-qty Q`. This prints ONLY the
-   stop-loss and take-profit orders at that confirmed quantity; it never repeats
-   the entry. If fills change, use the current broker-confirmed net quantity.
-   Cancel any unfilled remainder of the entry order first, then verify the
-   broker's current net position. Never place exits for more shares than the
-   broker currently holds. Each live exit still needs its own Allow once.
+6. Do NOT use exit quantities from the original ticket. Record the actual fill
+   with `result --status placed --filled-qty Q --filled-price P`. The exits
+   command rejects requests unless Q exactly matches that recorded fill. Cancel
+   any unfilled remainder of the entry order first, then verify the broker's
+   current net position matches Q. If the broker's fill or net position changes,
+   stop and reconcile the recorded fill before generating exits. Never place
+   exits for more shares than the broker currently holds. Each live exit still
+   needs its own Allow once.
 
 ## Steps: while it is open, and out by the close
 
