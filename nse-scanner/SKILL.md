@@ -97,6 +97,19 @@ Daily results also carry a `classification`: `momentum_watch` when at least one 
 
 Hits are listed most traded first (price times volume). A flat 14-period RSI is treated as neutral (50), not overbought. A chart with an old latest candle is excluded rather than being presented as a current setup.
 
+## Offline evaluation of daily setups
+
+Use the separate evaluator with saved Yahoo v8 daily OHLC charts (not spark closes):
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/evaluate.py" --offline /path/to/daily-chart-bundle.json --json
+python3 "${CLAUDE_SKILL_DIR}/evaluate.py" --offline /path/to/chart-folder --symbols RELIANCE,TCS
+```
+
+The evaluator identifies each daily setup using data available at that signal-day close, enters at the next available daily bar's open, and measures the close after 1, 3 and 5 held sessions. It reports win rate, average/median return, best/worst return, and maximum favourable/adverse price excursion for each observed setup. The JSON output includes every observation for independent review.
+
+This is a research diagnostic, not a trading strategy or a prediction. It does not include brokerage, taxes, slippage, bid-ask spread, market impact or liquidity constraints; it can have survivorship bias if the input universe contains only today's listed stocks. Use a multi-year point-in-time universe and corporate-action-adjusted OHLC data before drawing conclusions. It evaluates daily setups only, not intraday ORB. Never change entry, exit or risk rules based only on a small sample.
+
 ## The opening-range breakout scan (during the session)
 
 Normal NSE sessions run 09:15 to 15:30 IST after the 09:00–09:15
