@@ -53,6 +53,30 @@ class Calendar(unittest.TestCase):
         for d in alerts.NSE_HOLIDAYS:
             self.assertLess(datetime.date.fromisoformat(d).weekday(), 5, d)
 
+    def test_muhurat_session_status_and_next_open(self):
+        self.assertEqual(alerts.trading_day(datetime.date(2026, 11, 8)),
+                         (True, "special Muhurat session"))
+        self.assertEqual(alerts.session(datetime.date(2026, 11, 8)),
+                         (datetime.time(14, 20), datetime.time(15, 15)))
+
+        before = alerts.market_status(ist("2026-11-08T14:04"))
+        self.assertFalse(before["open"])
+        self.assertEqual(before["next_open"], "2026-11-08 14:20")
+
+        pre = alerts.market_status(ist("2026-11-08T14:05"))
+        self.assertFalse(pre["open"])
+        self.assertIn("pre-open", pre["reason"])
+
+        opened = alerts.market_status(ist("2026-11-08T14:20"))
+        self.assertTrue(opened["open"])
+        self.assertEqual((opened["opens"], opened["closes"]), ("14:20", "15:15"))
+        self.assertIn("Muhurat", opened["reason"])
+
+        closed = alerts.market_status(ist("2026-11-08T15:15"))
+        self.assertFalse(closed["open"])
+        self.assertEqual(closed["reason"], "after the close")
+        self.assertNotEqual(closed["next_open"], "2026-11-08 09:15")
+
     def test_india_standard_time_is_fixed_plus_0530(self):
         self.assertEqual(alerts.to_ist(DT(2026, 10, 30, 3, 45)), DT(2026, 10, 30, 9, 15))
         self.assertEqual(alerts.to_ist(DT(2026, 3, 9, 3, 45)), DT(2026, 3, 9, 9, 15))      # no daylight saving
@@ -259,6 +283,16 @@ class Rules(unittest.TestCase):
         now = ist(text)
         return alerts.evaluate(rules, self.q if quotes is None else quotes, alerts.market_status(now),
                                state or {}, now)
+
+    def test_muhurat_before_close_alert_rings_at_1510(self):
+        rule = [{"id": "flat", "type": "time", "at": "15:15",
+                 "label": "flat by close", "before_close": True}]
+        self.assertEqual(self.at("2026-11-08 15:09", rule)[0], [])
+        rings, state = self.at("2026-11-08 15:10", rule)
+        self.assertEqual(len(rings), 1)
+        self.assertIn("set for 15:10", rings[0]["message"])
+        self.assertIn("market closes at 15:15", rings[0]["message"])
+        self.assertEqual(self.at("2026-11-08 15:11", rule, state)[0], [])
 
     def test_a_target_rings_once(self):
         rules = [{"id": "tcs-3400", "symbol": "TCS", "type": "above", "price": 3400}]

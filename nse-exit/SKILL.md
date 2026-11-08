@@ -26,7 +26,9 @@ gap, a circuit limit or a fast market can fill past it. Day trading loses most
 people money, and a neat plan does not change that.
 
 Everything is India Standard Time (IST, UTC+05:30, no daylight saving). The
-NSE trades Monday to Friday, 09:15 to 15:30 IST, and prices are in rupees.
+Normal NSE sessions run Monday to Friday, 09:15 to 15:30 IST. The special
+Muhurat session on Sunday 2026-11-08 ran 14:20 to 15:15 IST. Prices are in
+rupees. The default Muhurat flat-by time was 15:10.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 

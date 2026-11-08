@@ -333,6 +333,32 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no time left to hold it", err)
 
+    def test_muhurat_flat_by_default_and_validation(self):
+        day = datetime.date(2026, 11, 8)
+        self.assertEqual(
+            exitp.session(day),
+            (datetime.time(14, 20), datetime.time(15, 15))
+        )
+
+        entry = dict(
+            REEL_ENTRY,
+            date="2026-11-08",
+            time="2:45 PM",
+            bar_start="14:40"
+        )
+        self.write(os.path.join("nse", "entry.json"), entry)
+        self.write(os.path.join("nse", "config.json"), {"flat_by": "15:14"})
+
+        code, text, err = self.plan("--now", "2026-11-08 14:46", "--json")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(text)["flat_by"], "15:10")
+
+        code, _, err = self.plan(
+            "--now", "2026-11-08 14:46", "--flat-by", "15:15"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("at or after the 3:15 PM close", err)
+
     def test_no_half_day_flat_by_unless_the_nse_announces_one(self):
         half = dict(REEL_ENTRY, date="2026-11-27")
         self.write(os.path.join("nse", "entry.json"), half)

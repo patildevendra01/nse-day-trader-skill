@@ -133,6 +133,12 @@ OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
 EARLY = datetime.time(13, 0)
 
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_OPEN = datetime.time(14, 20)
+MUHURAT_CLOSE = datetime.time(15, 15)
+MUHURAT_NO_ENTRIES_BEFORE = datetime.time(14, 40)
+MUHURAT_NO_ENTRIES_AFTER = datetime.time(15, 0)
+
 
 class RiskError(Exception):
     pass
@@ -178,7 +184,9 @@ def parse_utc(text):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NSE holiday list."""
+    """(is_trading_day, reason). Includes the 2026 NSE Muhurat session."""
+    if d.isoformat() == MUHURAT_DATE:
+        return True, "special Muhurat session"
     if d.weekday() >= 5:
         return False, "weekend"
     name = NSE_HOLIDAYS.get(d.isoformat())
@@ -204,17 +212,31 @@ def _shift(t, hours):
 
 def window_check(now_ist, c):
     """Reasons an entry cannot be placed now (India time). Empty when the window is off."""
+    d = now_ist.date()
+    t = now_ist.time().replace(second=0, microsecond=0)
+    stamp = now_ist.strftime("%a %Y-%m-%d %H:%M")
+
+    # Muhurat limits are mandatory and cannot be widened by user configuration.
+    if d.isoformat() == MUHURAT_DATE:
+        if now_ist.time() < MUHURAT_OPEN or now_ist.time() >= MUHURAT_CLOSE:
+            return ["window: the market is closed (%s IST; the special Muhurat session is 14:20 to 15:15)"
+                    % stamp], []
+        if t < MUHURAT_NO_ENTRIES_BEFORE:
+            return ["window: no new entries before 14:40 IST (it is %s)" % t.strftime("%H:%M")], []
+        if t > MUHURAT_NO_ENTRIES_AFTER:
+            return ["window: no new entries after 15:00 IST (it is %s)" % t.strftime("%H:%M")], []
+        return [], []
+
     before = hhmm(c.get("no_entries_before"), "no_entries_before")
     after = hhmm(c.get("no_entries_after"), "no_entries_after")
     if before is None and after is None:
         return [], []
+
     warns = []
-    d, t = now_ist.date(), now_ist.time().replace(second=0, microsecond=0)
     if d.year not in CALENDAR_YEARS:
         warns.append("the holiday list covers %s only: check nseindia.com for %s"
                      % (" and ".join(map(str, CALENDAR_YEARS)), d.isoformat()))
     ok, why = trading_day(d)
-    stamp = now_ist.strftime("%a %Y-%m-%d %H:%M")
     if not ok:
         return ["window: the market is closed today (%s, %s IST)" % (why, stamp)], warns
     close = EARLY if d.isoformat() in NSE_EARLY_CLOSE else CLOSE

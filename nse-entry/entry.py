@@ -104,7 +104,15 @@ NSE_EARLY_CLOSE = {}   # date -> reason. The NSE has no scheduled half days; if 
 CALENDAR_YEARS = (2026,)   # the official 2027 list is not out yet: later years report "unknown"
 OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
-EARLY = datetime.time(12, 30)   # only used for a date listed in NSE_EARLY_CLOSE
+EARLY = datetime.time(12, 30)
+
+# NSE special Muhurat session: 8 November 2026
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_OPEN = datetime.time(14, 20)
+MUHURAT_CLOSE = datetime.time(15, 15)
+MUHURAT_NO_ENTRIES_BEFORE = datetime.time(14, 40)
+MUHURAT_NO_ENTRIES_AFTER = datetime.time(15, 0)
+   # only used for a date listed in NSE_EARLY_CLOSE
 IST_OFFSET = datetime.timedelta(hours=5, minutes=30)   # fixed: India has no daylight saving
 
 
@@ -184,6 +192,8 @@ def ampm(t):
 
 def trading_day(d):
     """(is_trading_day, reason). Weekends and the NSE holiday list."""
+    if d.isoformat() == MUHURAT_DATE:
+        return True, "special Muhurat session"
     if d.weekday() >= 5:
         return False, "weekend"
     name = NSE_HOLIDAYS.get(d.isoformat())
@@ -197,6 +207,8 @@ def session(d):
     ok, _ = trading_day(d)
     if not ok:
         return None
+    if d.isoformat() == MUHURAT_DATE:
+        return MUHURAT_OPEN, MUHURAT_CLOSE
     return OPEN, (EARLY if d.isoformat() in NSE_EARLY_CLOSE else CLOSE)
 
 
@@ -204,7 +216,7 @@ def next_open(d):
     nd = d + datetime.timedelta(days=1)
     for _ in range(15):
         if session(nd):
-            return "%s 09:15" % nd.isoformat()
+            return "%s %s" % (nd.isoformat(), hm(session(nd)[0]))
         nd += datetime.timedelta(days=1)
     return None
 
@@ -445,9 +457,14 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     o, c = session(day)
     open_dt = datetime.datetime.combine(day, o)
     close_dt = datetime.datetime.combine(day, c)
-    early = c != CLOSE
-    before = datetime.datetime.combine(day, parse_hhmm(cfg["no_entries_before"], "no_entries_before"))
-    cutoff = early_cutoff(day, parse_hhmm(cfg["no_entries_after"], "no_entries_after"), close_dt)
+    is_muhurat = day.isoformat() == MUHURAT_DATE
+    early = c != CLOSE and not is_muhurat
+    if is_muhurat:
+        before = datetime.datetime.combine(day, MUHURAT_NO_ENTRIES_BEFORE)
+        cutoff = datetime.datetime.combine(day, MUHURAT_NO_ENTRIES_AFTER)
+    else:
+        before = datetime.datetime.combine(day, parse_hhmm(cfg["no_entries_before"], "no_entries_before"))
+        cutoff = early_cutoff(day, parse_hhmm(cfg["no_entries_after"], "no_entries_after"), close_dt)
     or_end = open_dt + datetime.timedelta(minutes=or_minutes)
     res.update(opens=hm(o), closes=hm(c), early_close=NSE_EARLY_CLOSE.get(day.isoformat()),
                no_entries_before=hm(before), no_entries_after=hm(cutoff))
@@ -484,7 +501,9 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     res["bars_closed"] = len(bars)
 
     if local < open_dt:
-        res.update(phase="pre-open", reason="the NSE opens at 9:15 IST%s" % (
+        open_label = ampm(o) if is_muhurat else short(o)
+        res.update(phase="pre-open", reason="the NSE opens at %s IST%s" % (
+            open_label,
             " and the %d-minute range is set at %s" % (or_minutes, short(or_end)) if setup == "orb" else ""))
         return res
 

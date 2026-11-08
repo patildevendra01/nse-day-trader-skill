@@ -132,6 +132,11 @@ OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
 EARLY = datetime.time(12, 30)   # only used if the NSE ever lists a half-day
 
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_OPEN = datetime.time(14, 20)
+MUHURAT_CLOSE = datetime.time(15, 15)
+MUHURAT_UNTIL = datetime.time(15, 0)
+
 SETUPS = [
     ("breakout_20d", "20-day closing-high breakout"),
     ("bull_flag", "bull flag"),
@@ -187,7 +192,9 @@ def parse_hhmm(text, flag="--at"):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NSE holiday list."""
+    """(is_trading_day, reason). Includes the special 2026 Muhurat session."""
+    if d.isoformat() == MUHURAT_DATE:
+        return True, "special Muhurat session"
     if d.weekday() >= 5:
         return False, "weekend"
     name = NSE_HOLIDAYS.get(d.isoformat())
@@ -198,6 +205,8 @@ def trading_day(d):
 
 def session(d):
     """(open_time, close_time) in India time, or None if closed all day."""
+    if d.isoformat() == MUHURAT_DATE:
+        return MUHURAT_OPEN, MUHURAT_CLOSE
     ok, _ = trading_day(d)
     if not ok:
         return None
@@ -555,7 +564,9 @@ def scan_daily(data, symbols, now_utc, min_price, min_volume, min_turnover_cr=0.
 # ---------------------------------------------------------------- opening-range breakout
 
 def slot(day, k):
-    return datetime.datetime.combine(day, OPEN) + datetime.timedelta(minutes=BAR_MIN * k)
+    s = session(day)
+    start = s[0] if s else OPEN
+    return datetime.datetime.combine(day, start) + datetime.timedelta(minutes=BAR_MIN * k)
 
 
 def session_bars(series, day, cutoff):
@@ -572,7 +583,8 @@ def session_bars(series, day, cutoff):
         et = ts_to_ist(ts)
         if et.date() != day or et.second or et.minute % BAR_MIN:
             continue  # another day, or the live tick off the grid
-        if et.time() < OPEN or et.time() >= close_t:
+        open_t = s[0] if s else OPEN
+        if et.time() < open_t or et.time() >= close_t:
             continue  # pre-open auction, after hours, the post-close session
         if et + datetime.timedelta(minutes=BAR_MIN) > cutoff:
             continue  # still in progress at the cutoff
@@ -936,7 +948,7 @@ def cmd_orb(a):
     now = parse_now(a.now)
     at = parse_hhmm(a.at) if a.at else None
     cfg = read_config(a.config)
-    until = parse_hhmm(a.until or cfg.get("no_entries_after") or "14:30", "--until")
+    until_text = a.until or cfg.get("no_entries_after")
     data = failed = None
     explicit_day = None
     offline_syms = None
@@ -949,6 +961,11 @@ def cmd_orb(a):
                 explicit_day = max(days)
                 if at is None:
                     raise ScanError("offline replay: give --at HH:MM or --now \"YYYY-MM-DD HH:MM\"")
+    target_day = explicit_day or to_ist(now).date()
+    if until_text:
+        until = parse_hhmm(until_text, "--until")
+    else:
+        until = MUHURAT_UNTIL if target_day.isoformat() == MUHURAT_DATE else datetime.time(14, 30)
     day, cutoff = orb_window(now, at, a.or_minutes, until, explicit_day)
     symbols = read_symbols(a, offline_syms)
     confirm = None
@@ -971,6 +988,17 @@ def cmd_orb(a):
             return parse_chart(yahoo_get(chart_path(sym, rng, "%dm" % BAR_MIN)), sym)
     hits, counts, failed2 = scan_orb(data, symbols, day, cutoff, a.or_minutes, a.min_price, a.min_volume, confirm,
                                      a.max_confirm)
+
+    # Muhurat: never report "no breakout" when the intraday feed has no usable bars.
+    if day.isoformat() == MUHURAT_DATE and (
+        counts["fetched"] == 0 or counts["unusable"] == counts["fetched"]
+    ):
+        raise ScanError(
+            "Muhurat scan cannot make a breakout conclusion: Yahoo supplied no usable "
+            "5-minute bars for the 14:20-15:15 session. Check the live NSE feed or use "
+            "a verified offline data source; do not treat this as no breakout."
+        )
+
     failed = dict(failed or {})
     failed.update(failed2)
     nfailed = len([s for s in symbols if s in failed])
@@ -1064,7 +1092,7 @@ def main(argv=None):
     p.add_argument("--max-confirm", type=int, default=MAX_CONFIRM,
                    help="v8 charts to fetch in stage 2, most traded first (%d; 0 = all)" % MAX_CONFIRM)
     p.add_argument("--at", help="cut the clock at this India time, HH:MM")
-    p.add_argument("--until", help="no new entries after HH:MM (default: config no_entries_after, 14:30)")
+    p.add_argument("--until", help="no new entries after HH:MM (default: config setting; 15:00 Muhurat, 14:30 regular)")
     p.add_argument("--config", default="nse/config.json")
     a = ap.parse_args(argv)
     if not a.cmd:

@@ -101,15 +101,16 @@ How the numbers work:
   It is the gross loss at the stop: brokerage, STT and other charges are not
   in it (nse-budget prints an estimate).
 - **The window** is India time (IST, UTC+05:30, no daylight saving), worked
-  out in the tool, never from the computer's clock zone. The session is 09:15
-  to 15:30. The 09:00 to 09:15 pre-open call auction is not a session for
-  entries. Weekends and NSE holidays are closed. The holiday list in this
+  out in the tool, never from the computer's clock zone. Normal sessions
+  run 09:15 to 15:30. The 09:00 to 09:15 pre-open call auction is not a
+  session for entries. The special Muhurat session on Sunday 2026-11-08
+  ran 14:20 to 15:15. Weekends and NSE holidays are closed. The holiday list in this
   tool is the 2026 list (16 weekday closures, from nseindia.com, cross-checked
   against several brokers on 2026-10-31); NSE has no half-days. For any date
   outside 2026 it warns "the holiday list covers 2026 only: check
-  nseindia.com", because the 2027 list was not out yet. Diwali Muhurat
-  trading (a special evening session on Sunday 2026-11-08, timing announced
-  by NSE) is treated as closed. Set both `no_entries_*` to null to switch the
+  nseindia.com", because the 2027 list was not out yet. Muhurat trading
+  on Sunday 2026-11-08 used a fixed entry window of 14:40 to 15:00,
+  regardless of configured entry-window values. Set both `no_entries_*` to null to switch the
   window off.
 - **No pattern-day-trader rule** applies in India, so there is no `pdt_guard`
   and no day-trade count.
