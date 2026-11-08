@@ -203,6 +203,63 @@ class Evaluation(unittest.TestCase):
         self.assertEqual(full_gaps, [])
         self.assertEqual(quality["status"], "review_required")
 
+    def test_trading_session_audit_uses_holidays_and_special_sessions(self):
+        dates = [
+            datetime.date(2025, 1, 1), datetime.date(2025, 1, 2),
+            datetime.date(2025, 1, 5), datetime.date(2025, 1, 6),
+            datetime.date(2025, 1, 7),
+        ]
+        stamps = [int((scan.ist_to_utc(datetime.datetime.combine(
+            day, datetime.time(0, 0))) - datetime.datetime(1970, 1, 1)).total_seconds())
+                  for day in dates]
+        series = {"t": stamps}
+        calendar = {
+            datetime.date(2025, 1, 1): {"status": "trading", "description": ""},
+            datetime.date(2025, 1, 2): {"status": "trading", "description": ""},
+            datetime.date(2025, 1, 3): {"status": "trading", "description": ""},
+            datetime.date(2025, 1, 4): {"status": "weekend", "description": ""},
+            datetime.date(2025, 1, 5): {"status": "special", "description": "Muhurat"},
+            datetime.date(2025, 1, 6): {"status": "holiday", "description": "Test holiday"},
+            datetime.date(2025, 1, 7): {"status": "trading", "description": ""},
+        }
+        result = evaluate.audit_trading_sessions(series, calendar)
+        self.assertEqual(result["status"], "review_required")
+        self.assertEqual(result["missing_trading_sessions"], ["2025-01-03"])
+        self.assertEqual(result["bars_on_closed_dates"], ["2025-01-06"])
+        self.assertEqual(result["expected_trading_sessions"], 5)
+
+    def test_trading_calendar_csv_requires_complete_year(self):
+        import os
+        import tempfile
+        rows = ["date,status,description"]
+        day = datetime.date(2025, 1, 1)
+        while day.year == 2025:
+            status = "weekend" if day.weekday() >= 5 else "trading"
+            rows.append("%s,%s," % (day.isoformat(), status))
+            day += datetime.timedelta(days=1)
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
+            handle.write("\\n".join(rows) + "\\n")
+            path = handle.name
+        try:
+            calendar = evaluate.load_trading_calendar(path)
+            self.assertEqual(len(calendar), 365)
+            self.assertEqual(calendar[datetime.date(2025, 1, 1)]["status"], "trading")
+        finally:
+            os.unlink(path)
+
+    def test_trading_calendar_csv_rejects_incomplete_year(self):
+        import os
+        import tempfile
+        content = "date,status,description\\n2025-01-01,trading,\\n"
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", delete=False) as handle:
+            handle.write(content)
+            path = handle.name
+        try:
+            with self.assertRaises(evaluate.scan.ScanError):
+                evaluate.load_trading_calendar(path)
+        finally:
+            os.unlink(path)
+
     def test_series_quality_rejects_inconsistent_ohlc(self):
         series = make_series([100 + i * 0.1 for i in range(40)])
         series["h"][12] = series["o"][12] - 1
