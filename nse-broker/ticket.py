@@ -553,11 +553,14 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date, fill_id=None
     return pf
 
 
-def _append_fill_log(state, now, today, symbol, side, qty, price):
-    state.setdefault("orders", []).append({
+def _append_fill_log(state, now, today, symbol, side, qty, price, fill_id=None):
+    record = {
         "at": ist_iso(now), "date": today, "status": "filled", "symbol": bare(symbol), "side": side,
         "qty": _str_num(float(qty)), "price": float(price),
-        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), bare(symbol), _p(price))})
+        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), bare(symbol), _p(price))}
+    if fill_id:
+        record["fill_id"] = fill_id
+    state.setdefault("orders", []).append(record)
 
 
 def log_fill(state_path, now, today, symbol, side, qty, price):
@@ -841,8 +844,39 @@ def cmd_fill(a):
     date = a.date or to_ist(now).date().isoformat()
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise TicketError("--date wants a date like 2026-10-30")
-    pf = apply_fill(a.portfolio, cfg, a.symbol, a.side, a.qty, a.price, date)
-    log_fill(a.state, now, date, a.symbol, a.side, a.qty, a.price)
+    fill_id = (a.fill_id or "").strip()
+    if a.fill_id is not None and not fill_id:
+        raise TicketError("--fill-id cannot be blank")
+    if len(fill_id) > 200:
+        raise TicketError("--fill-id must be 200 characters or fewer")
+    qty, price = _f(a.qty), _f(a.price)
+    if qty is None or price is None:
+        raise TicketError("--qty and --price must be finite numbers")
+    state = load_state(a.state)
+    prior_log = next((r for r in state.get("orders", [])
+                      if r.get("status") == "filled" and r.get("fill_id") == fill_id), None) if fill_id else None
+    if prior_log:
+        same = (bare(prior_log.get("symbol")) == bare(a.symbol)
+                and prior_log.get("side") == a.side
+                and _f(prior_log.get("qty")) == qty and _f(prior_log.get("price")) == price
+                and prior_log.get("date") == date)
+        if not same:
+            raise TicketError("this --fill-id was already used with different fill details")
+        print("This broker fill ID is already recorded; no portfolio or log changes were made.")
+        return 0
+    pf_before = read_json(a.portfolio, "portfolio", required=False) or {}
+    already_applied = fill_id in pf_before.get("applied_fill_ids", []) if fill_id else False
+    pf = apply_fill(a.portfolio, cfg, a.symbol, a.side, qty, price, date, fill_id=fill_id or None)
+    if not already_applied:
+        if fill_id:
+            _append_fill_log(state, now, date, a.symbol, a.side, qty, price, fill_id=fill_id)
+            write_json(a.state, state)
+        else:
+            log_fill(a.state, now, date, a.symbol, a.side, qty, price)
+    elif fill_id:
+        # Recover the state log if a previous run saved the portfolio before the log.
+        _append_fill_log(state, now, date, a.symbol, a.side, qty, price, fill_id=fill_id)
+        write_json(a.state, state)
     print("Recorded %s %s %s at %s on %s in %s. Cash now %s." % (a.side, a.qty, bare(a.symbol),
                                                                 _money(a.price), date, a.portfolio,
                                                                 _money(pf["cash"])))
@@ -969,6 +1003,7 @@ def main(argv=None):
     p.add_argument("--side", required=True, choices=["buy", "sell"])
     p.add_argument("--qty", required=True)
     p.add_argument("--price", required=True)
+    p.add_argument("--fill-id", help="unique broker trade/execution ID; makes retries safe")
     p.add_argument("--date", help="YYYY-MM-DD (default: today in India)")
     p.add_argument("--now")
     p.add_argument("--portfolio", default="nse/portfolio.json")
