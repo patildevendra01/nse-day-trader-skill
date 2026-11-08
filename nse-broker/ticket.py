@@ -626,7 +626,10 @@ def cmd_approve(a):
     if not ok:
         print("Not recorded: %s. Ask the user again with the ticket for order %d." % (why, a.index))
         return 1
-    loss, stop = max_loss(order)
+    # Use the conservative loss calculated by nse-risk, which may use a fresher
+    # market reference than the plan's original entry estimate.
+    loss = rv.get("max_loss")
+    stop = rv.get("stop")
     rec = {"at": ist_iso(now), "date": today, "index": a.index, "fingerprint": fingerprint(order),
            "symbol": bare(order.get("symbol")), "side": order.get("side"),
            "qty": order.get("qty"), "kind": kind_of(order, rv), "max_loss": loss, "stop": stop,
