@@ -85,8 +85,12 @@ But:
 
 - **The normal `show` command prints the entry only.** It withholds exit tickets
   until an entry fill is recorded with `result --status placed --filled-qty Q
-  --filled-price P`. The exits command requires its quantity to exactly match
-  that recorded fill; a manually typed or larger quantity is rejected. After
+  --filled-price P`. If the order was first recorded as placed before its fill
+  was known, run that same result command again when the first broker-confirmed
+  fill arrives; this attaches the fill to the approved order. Use
+  `reconcile-fill` only for later cumulative partial-fill updates. The exits
+  command requires its quantity to exactly match that recorded fill; a manually
+  typed or larger quantity is rejected. After
   recording the fill, check the broker's current net position and run
   `ticket.py exits --index N --filled-qty Q`. A partial fill must use the
   actual filled quantity, not the originally requested quantity. If the broker
