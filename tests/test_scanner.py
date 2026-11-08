@@ -270,8 +270,8 @@ class Daily(unittest.TestCase):
         hits, counts, last = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-30 09:00"), 0, 0)
         self.assertEqual({h["symbol"]: h["setups"] for h in hits}, self.BEFORE)
         self.assertEqual(last, D(2026, 10, 29))
-        self.assertEqual(counts, {"requested": 19, "fetched": 19, "illiquid": 0, "short": 0, "scanned": 19,
-                                  "hits": 15})
+        self.assertEqual(counts, {"requested": 19, "fetched": 19, "illiquid": 0, "short": 0, "stale": 0,
+                                  "scanned": 19, "hits": 15})
 
     def test_breakout_rule_is_what_the_hits_say(self):
         """Re-derive 'close above the best close of the 20 sessions before' straight from the closes."""
@@ -332,8 +332,22 @@ class Daily(unittest.TestCase):
         self.assertEqual((counts["fetched"], counts["short"], counts["scanned"]), (2, 1, 0))
         self.assertIsNone(last)
 
+    def test_stale_daily_charts_are_not_used(self):
+        stale = dict(self.data["LT"])
+        stale["t"] = [stamp - 86400 for stamp in stale["t"]]
+        hits, counts, last = scan.scan_daily({"LT": stale}, ["LT"], scan.parse_now("2026-10-30 09:00"), 0, 0)
+        self.assertEqual(hits, [])
+        self.assertEqual(last, None)
+        self.assertEqual((counts["stale"], counts["scanned"]), (1, 0))
+
+    def test_last_completed_session_accounts_for_muhurat(self):
+        self.assertEqual(scan.last_completed_session(scan.parse_now("2026-10-30 09:00")), D(2026, 10, 29))
+        self.assertEqual(scan.last_completed_session(scan.parse_now("2026-10-30 15:30")), D(2026, 10, 30))
+        self.assertEqual(scan.last_completed_session(scan.parse_now("2026-11-09 09:00")), D(2026, 11, 8))
+
     def test_rsi_matches_wilders_example(self):
         self.assertIsNone(scan.rsi([1.0] * 10))
+        self.assertEqual(scan.rsi([5.0] * 20), 50.0)  # a flat chart is neutral, not overbought
         self.assertEqual(scan.rsi([float(x) for x in range(1, 40)]), 100.0)
         closes = [44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08, 45.89, 46.03, 45.61,
                   46.28, 46.28]
