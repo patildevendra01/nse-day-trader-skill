@@ -390,6 +390,27 @@ class Flow(unittest.TestCase):
         with open(self.pf) as fh:
             self.assertEqual(json.load(fh)["positions"][0]["shares"], 7)
 
+    def test_first_fill_can_be_attached_after_order_was_marked_placed(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        code, _, err = run(self.args("result", "--index", "1", "--status", "placed",
+                                     "--broker-id", "paper-delayed", "--portfolio", self.pf))
+        self.assertEqual(code, 0, err)
+        code, text, err = run(self.args("result", "--index", "1", "--status", "placed",
+                                        "--filled-qty", "7", "--filled-price", "1432.60",
+                                        "--portfolio", self.pf))
+        self.assertEqual(code, 0, err)
+        self.assertIn("Added the fill", text)
+        st = self.state_doc()
+        latest_entry = ticket.latest(st, ticket.fingerprint(reliance()), TODAY)
+        self.assertEqual(latest_entry["filled_qty"], 7)
+        self.assertEqual(latest_entry["broker_order_id"], "paper-delayed")
+        code, text, err = run(self.args("exits", "--index", "1", "--filled-qty", "7"))
+        self.assertEqual(code, 0, err)
+        self.assertIn('"quantity": 7', text)
+        with open(self.pf) as fh:
+            self.assertEqual(json.load(fh)["positions"][0]["shares"], 7)
+
     def test_exits_are_blocked_until_entry_fill_quantity_is_recorded(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))
