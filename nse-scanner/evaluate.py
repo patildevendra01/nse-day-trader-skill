@@ -150,13 +150,67 @@ def _valid_positive_number(value):
         return False
 
 
-def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0):
+
+def load_universe_history(path):
+    """Read inclusive point-in-time membership intervals from a CSV file."""
+    import csv
+    import datetime
+    intervals = defaultdict(list)
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            required = {"symbol", "effective_from", "effective_to"}
+            if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+                raise scan.ScanError("universe history CSV needs symbol,effective_from,effective_to columns")
+            for line, row in enumerate(reader, 2):
+                symbol = (row.get("symbol") or "").strip().upper()
+                if symbol.endswith(".NS"):
+                    symbol = symbol[:-3]
+                start_text = (row.get("effective_from") or "").strip()
+                end_text = (row.get("effective_to") or "").strip()
+                if not symbol or not start_text:
+                    raise scan.ScanError("universe history row %d has a blank symbol or effective_from" % line)
+                try:
+                    start = datetime.date.fromisoformat(start_text)
+                    end = datetime.date.fromisoformat(end_text) if end_text else None
+                except ValueError:
+                    raise scan.ScanError("universe history row %d has an invalid ISO date" % line)
+                if start.isoformat() != start_text or (end_text and end.isoformat() != end_text):
+                    raise scan.ScanError("universe history row %d dates must use YYYY-MM-DD" % line)
+                if end is not None and end < start:
+                    raise scan.ScanError("universe history row %d ends before it starts" % line)
+                intervals[symbol].append((start, end))
+    except OSError as exc:
+        raise scan.ScanError("cannot read universe history CSV: %s" % exc)
+    for symbol, spans in intervals.items():
+        spans.sort(key=lambda span: span[0])
+        previous_end = None
+        for index, (start, end) in enumerate(spans):
+            if index and (previous_end is None or start <= previous_end):
+                raise scan.ScanError("overlapping universe history intervals for %s" % symbol)
+            previous_end = end
+    if not intervals:
+        raise scan.ScanError("universe history CSV contains no membership rows")
+    return dict(intervals)
+
+
+def _is_member(history, symbol, signal_date):
+    import datetime
+    day = datetime.date.fromisoformat(signal_date)
+    return any(start <= day and (end is None or day <= end)
+               for start, end in history.get(symbol, []))
+
+
+def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe_history=None):
     if not _valid_nonnegative_number(round_trip_cost_pct):
         raise ValueError("round_trip_cost_pct must be a finite, non-negative number")
     round_trip_cost_pct = float(round_trip_cost_pct)
     symbols = list(symbols or sorted(data))
     all_trades, skipped, loaded = [], 0, 0
     missing_adjustments, invalid_adjustments = [], []
+    excluded_by_universe = 0
+    if universe_history is not None and not isinstance(universe_history, dict):
+        universe_history = load_universe_history(universe_history)
     for symbol in symbols:
         series = data.get(symbol)
         if not series:
@@ -173,8 +227,11 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0):
         trades, n_skipped = evaluate_series(series, now_utc=now_utc,
                                             round_trip_cost_pct=round_trip_cost_pct)
         for trade in trades:
+            if universe_history is not None and not _is_member(universe_history, symbol, trade["signal_date"]):
+                excluded_by_universe += 1
+                continue
             trade["symbol"] = symbol
-        all_trades.extend(trades)
+            all_trades.append(trade)
         skipped += n_skipped
     return {
         "mode": "offline_daily_setup_evaluation",
@@ -186,6 +243,9 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0):
         "trade_costs_included": round_trip_cost_pct > 0,
         "round_trip_cost_assumption_pct": round_trip_cost_pct,
         "net_returns_account_for_cost_assumption": True,
+        "point_in_time_universe_applied": universe_history is not None,
+        "universe_history_symbols": sorted(universe_history) if universe_history is not None else [],
+        "observations_excluded_outside_historical_universe": excluded_by_universe,
         "entry_rule": "next available daily session adjusted open after the signal close",
         "exit_rule": "adjusted daily close after 1, 3 or 5 held sessions",
         "returns_are_predictions": False,
@@ -195,7 +255,7 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0):
         "observations": all_trades,
         "limitations": [
             "Historical results do not predict future performance.",
-            "Current symbol lists can create survivorship bias.",
+            ("A dated membership CSV was applied to signal dates; its completeness and accuracy are not independently verified." if universe_history is not None else "No point-in-time membership file was supplied. Current-symbol data can create survivorship bias; results are not survivorship-bias corrected."),
             "Yahoo adjusted-close data is required; missing or incomplete adjustment arrays are rejected. Adjustment quality and historical corporate-action coverage still depend on Yahoo's feed.",
             "Net returns subtract only the user-supplied all-in round-trip cost assumption; actual brokerage, taxes, spread, slippage and liquidity impact can differ by broker, order type, price and date.",
             "This evaluates daily setups only; it is not an intraday opening-range backtest."
@@ -208,6 +268,7 @@ def main(argv=None):
     ap.add_argument("--offline", required=True, help="saved Yahoo v8 daily chart bundle or folder")
     ap.add_argument("--symbols", help="comma-separated symbols; default is every chart in the bundle")
     ap.add_argument("--json", action="store_true", help="print the full machine-readable report")
+    ap.add_argument("--universe-history", help="CSV with symbol,effective_from,effective_to membership intervals; dates inclusive, blank end means still a member")
     ap.add_argument("--round-trip-cost-pct", type=float, default=0.0,
                     help="user-supplied all-in round-trip cost as %% of entry value; includes estimated fees, taxes and slippage")
     a = ap.parse_args(argv)
@@ -218,7 +279,8 @@ def main(argv=None):
             raise scan.ScanError("no symbols to evaluate")
         if not _valid_nonnegative_number(a.round_trip_cost_pct):
             raise scan.ScanError("--round-trip-cost-pct must be a finite, non-negative number")
-        report = evaluate(data, symbols, round_trip_cost_pct=a.round_trip_cost_pct)
+        report = evaluate(data, symbols, round_trip_cost_pct=a.round_trip_cost_pct,
+                          universe_history=a.universe_history)
         report["failed_charts"] = errors
         if a.json:
             print(json.dumps(report, indent=2))
@@ -229,6 +291,11 @@ def main(argv=None):
                      report["skipped_insufficient_future_data"]))
             print("Entry: next session adjusted open. Exit: adjusted close after 1, 3 or 5 held sessions.")
             print("User-supplied all-in round-trip cost assumption: %.4f%% of entry value." % a.round_trip_cost_pct)
+            if a.universe_history:
+                print("Point-in-time universe membership applied from: %s" % a.universe_history)
+                print("Observations excluded outside dated membership: %d" % report["observations_excluded_outside_historical_universe"])
+            else:
+                print("WARNING: no point-in-time universe supplied; results may have survivorship bias.")
             if report["symbols_rejected_missing_adjusted_close"]:
                 print("Rejected (no adjusted-close data): %s" % ", ".join(report["symbols_rejected_missing_adjusted_close"]))
             if report["symbols_rejected_incomplete_adjusted_close"]:
@@ -243,7 +310,7 @@ def main(argv=None):
             if errors:
                 print("%d charts failed to load." % len(errors))
         return 0 if report["trades"] else 1
-    except scan.ScanError as exc:
+    except (scan.ScanError, ValueError) as exc:
         print("evaluate.py: %s" % exc, file=sys.stderr)
         return 1
 
