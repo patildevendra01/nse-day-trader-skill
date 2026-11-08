@@ -649,6 +649,26 @@ class Flow(unittest.TestCase):
         self.assertEqual(second["cash"], first["cash"])
         self.assertEqual(len(self.state_doc()["orders"]), 1)
 
+    def test_manual_fill_recovery_rejects_changed_details_after_portfolio_write(self):
+        args = ["fill", "--symbol", "ITC", "--side", "buy", "--qty", "5", "--price", "100",
+                "--fill-id", "trade-crash", "--date", TODAY, "--portfolio", self.pf,
+                "--config", self.cfg, "--state", self.state]
+        self.assertEqual(run(args)[0], 0)
+        # Simulate a crash after the portfolio was saved but before the state log was saved.
+        with open(self.state, "w") as fh:
+            json.dump({"orders": []}, fh)
+        changed = list(args)
+        changed[changed.index("5")] = "6"
+        code, _, err = run(changed)
+        self.assertEqual(code, 1)
+        self.assertIn("already used with different fill details", err)
+        with open(self.pf) as fh:
+            pf = json.load(fh)
+        self.assertEqual(pf["positions"][0]["shares"], 5)
+        # The original broker fill can safely recover its missing log record.
+        self.assertEqual(run(args)[0], 0)
+        self.assertEqual(len(self.state_doc()["orders"]), 1)
+
     def test_manual_fill_allows_distinct_broker_fill_ids_for_same_details(self):
         base = ["fill", "--symbol", "ITC", "--side", "buy", "--qty", "5", "--price", "100",
                 "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state]
