@@ -475,12 +475,13 @@ class Flow(unittest.TestCase):
         self.assertFalse(self.state_doc()["orders"][0]["paper"])
         code, text, _ = run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "2610300001234"))
         self.assertEqual(code, 0)
-        self.assertIn("When it fills, record it: ticket.py fill --symbol RELIANCE --side buy", text)
+        self.assertIn("When the first fill is confirmed, attach it to this order with:", text)
         self.assertIn("cancel the other one", text)
-        code, text, _ = run(["fill", "--symbol", "reliance.ns", "--side", "buy", "--qty", "23", "--price", "1432.65",
-                             "--portfolio", self.pf, "--config", self.cfg, "--state", self.state, "--now", NOW])
+        code, text, _ = run(self.args("result", "--index", "1", "--status", "placed",
+                                     "--filled-qty", "23", "--filled-price", "1432.65"))
         self.assertEqual(code, 0)
-        self.assertIn("Recorded buy 23 RELIANCE at ₹1,432.65", text)
+        self.assertIn("Added the fill to", text)
+        self.assertIn("ticket.py exits --index 1 --filled-qty 23", text)
         with open(self.pf) as fh:
             self.assertEqual(json.load(fh)["positions"][0]["ticker"], "RELIANCE")
 
@@ -588,7 +589,7 @@ class Flow(unittest.TestCase):
         self.run_risk()
         code, _, err = run(self.args("result", "--index", "1", "--status", "placed"))
         self.assertEqual(code, 1)
-        self.assertIn("no yes recorded", err)
+        self.assertIn("no approval awaiting a result", err)
         code, text, _ = run(self.args("decline", "--index", "1", "--reply", "no thanks"))
         self.assertEqual(code, 0)
         code, text, _ = run(self.args("show", "--index", "1"))
