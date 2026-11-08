@@ -63,6 +63,16 @@ def shift_to(d, day):
     return d
 
 
+
+def shift_to_muhurat(d):
+    d = copy.deepcopy(d)
+    r = d["chart"]["result"][0]
+    new_open = int((DT(2026, 11, 8, 8, 50) - DT(1970, 1, 1)).total_seconds())
+    delta = new_open - OPEN_TS
+    r["timestamp"] = [t + delta for t in r["timestamp"]]
+    r["meta"]["regularMarketTime"] += delta
+    return d
+
 def no_breakout(d=None):
     """Every bar after the range stays under the 2,825.00 high."""
     d = copy.deepcopy(d if d is not None else doc())
@@ -82,6 +92,24 @@ def run(argv):
 
 
 class TheSession(unittest.TestCase):
+
+    def test_muhurat_pre_open(self):
+        r = at("2026-11-08 14:19", shift_to_muhurat(no_breakout()))
+        self.assertEqual(r["phase"], "pre-open")
+        self.assertEqual((r["opens"], r["closes"]), ("14:20", "15:15"))
+
+    def test_muhurat_entry_window(self):
+        d = shift_to_muhurat(no_breakout())
+        r = at("2026-11-08 14:40", d)
+        self.assertEqual(r["phase"], "open")
+        self.assertEqual(r["no_entries_before"], "14:40")
+        self.assertEqual(r["no_entries_after"], "15:00")
+
+    def test_muhurat_cutoff(self):
+        r = at("2026-11-08 15:00", shift_to_muhurat(no_breakout()))
+        self.assertEqual(r["status"], "expired")
+        self.assertEqual(r["phase"], "after-cutoff")
+
     def test_triggers_at_1000_on_the_0955_bar(self):
         r = at("2026-10-30 10:00")
         self.assertEqual(r["status"], "triggered")

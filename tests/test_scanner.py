@@ -494,6 +494,53 @@ class Orb(unittest.TestCase):
         with self.assertRaises(scan.ScanError):
             scan.orb_window(scan.parse_now("2026-10-30 10:15"), None, 7, T_ORB_END)    # not a multiple of 5
 
+    def test_muhurat_calendar_and_slots(self):
+        saturday = D(2026, 11, 7)
+        muhurat = D(2026, 11, 8)
+        monday = D(2026, 11, 9)
+
+        self.assertFalse(scan.trading_day(saturday)[0])
+        self.assertTrue(scan.trading_day(muhurat)[0])
+        self.assertIn("Muhurat", scan.trading_day(muhurat)[1])
+        self.assertTrue(scan.trading_day(monday)[0])
+
+        self.assertEqual(scan.session(muhurat),
+                         (datetime.time(14, 20), datetime.time(15, 15)))
+        self.assertEqual(scan.slot(muhurat, 0), DT(2026, 11, 8, 14, 20))
+        self.assertEqual(scan.slot(muhurat, 3), DT(2026, 11, 8, 14, 35))
+        self.assertEqual(scan.slot(muhurat, 4), DT(2026, 11, 8, 14, 40))
+
+    def test_muhurat_orb_window(self):
+        now = scan.parse_now("2026-11-08 14:40")
+        day, cutoff = scan.orb_window(now, None, 15, scan.MUHURAT_UNTIL)
+
+        self.assertEqual(day, D(2026, 11, 8))
+        self.assertEqual(cutoff, DT(2026, 11, 8, 14, 40))
+
+        with self.assertRaises(scan.ScanError):
+            scan.orb_window(scan.parse_now("2026-11-08 14:39"),
+                            None, 15, scan.MUHURAT_UNTIL)
+
+        with self.assertRaises(scan.ScanError):
+            scan.orb_window(scan.parse_now("2026-11-08 15:01"),
+                            None, 15, scan.MUHURAT_UNTIL)
+
+    def test_muhurat_session_bars_start_at_1420(self):
+        closes = [100, 101, 100.5, 100.8, 101.2, 101.5, 101.7]
+        s = bars_series("2026-11-08", closes, start="14:20")
+
+        bars = scan.session_bars(
+            s, D(2026, 11, 8), DT(2026, 11, 8, 14, 50)
+        )
+
+        self.assertEqual(
+            [b["start"].strftime("%H:%M") for b in bars],
+            ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45"]
+        )
+        self.assertTrue(
+            scan.usable(bars, D(2026, 11, 8), DT(2026, 11, 8, 14, 50), 3)
+        )
+
     def test_2027_runs_with_a_calendar_warning_flag(self):
         day, cut = scan.orb_window(scan.parse_now("2027-01-05 10:15"), None, 15, T_ORB_END)
         self.assertEqual(day, D(2027, 1, 5))                     # unknown year: allowed, the output warns

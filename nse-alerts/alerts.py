@@ -95,6 +95,12 @@ PRE_OPEN = datetime.time(9, 0)      # call auction, no continuous trading
 OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
 EARLY = datetime.time(12, 30)       # only used for a date listed in NSE_EARLY_CLOSE
+
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_PRE_OPEN = datetime.time(14, 5)
+MUHURAT_OPEN = datetime.time(14, 20)
+MUHURAT_CLOSE = datetime.time(15, 15)
+MUHURAT_FLAT_BY = datetime.time(15, 10)
 IST_OFFSET = datetime.timedelta(hours=5, minutes=30)   # fixed: India has no daylight saving
 
 
@@ -128,7 +134,9 @@ def parse_now(text):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NSE holiday list."""
+    """(is_trading_day, reason). Includes the 2026 NSE Muhurat session."""
+    if d.isoformat() == MUHURAT_DATE:
+        return True, "special Muhurat session"
     if d.weekday() >= 5:
         return False, "weekend"
     name = NSE_HOLIDAYS.get(d.isoformat())
@@ -139,6 +147,8 @@ def trading_day(d):
 
 def session(d):
     """(open_time, close_time) in IST, or None if closed all day."""
+    if d.isoformat() == MUHURAT_DATE:
+        return MUHURAT_OPEN, MUHURAT_CLOSE
     ok, _ = trading_day(d)
     if not ok:
         return None
@@ -149,6 +159,7 @@ def market_status(now_utc):
     local = to_ist(now_utc)
     d = local.date()
     ok, reason = trading_day(d)
+    muhurat = d.isoformat() == MUHURAT_DATE
     st = {"now_ist": local.strftime("%Y-%m-%d %H:%M"), "date": d.isoformat(),
           "weekday": local.strftime("%A"), "calendar_known": d.year in CALENDAR_YEARS,
           "open": False, "reason": reason, "early_close": NSE_EARLY_CLOSE.get(d.isoformat())}
@@ -158,18 +169,23 @@ def market_status(now_utc):
         st["opens"], st["closes"] = o.strftime("%H:%M"), c.strftime("%H:%M")
         if o <= local.time() < c:
             st["open"] = True
-            st["reason"] = "regular session"
-        elif PRE_OPEN <= local.time() < o:
-            st["reason"] = "pre-open call auction (no continuous trading until %s)" % o.strftime("%H:%M")
+            st["reason"] = "special Muhurat session" if muhurat else "regular session"
+        elif (MUHURAT_PRE_OPEN if muhurat else PRE_OPEN) <= local.time() < o:
+            if muhurat:
+                st["reason"] = "Muhurat pre-open (no continuous trading until %s)" % o.strftime("%H:%M")
+            else:
+                st["reason"] = "pre-open call auction (no continuous trading until %s)" % o.strftime("%H:%M")
         elif local.time() < o:
             st["reason"] = "before the open"
         else:
             st["reason"] = "after the close"
-    # next open
+
+    # Find the next session and use its actual opening time.
     nd = d if (s and local.time() < s[0]) else d + datetime.timedelta(days=1)
     for _ in range(15):
-        if session(nd):
-            st["next_open"] = "%s 09:15" % nd.isoformat()
+        ns = session(nd)
+        if ns:
+            st["next_open"] = "%s %s" % (nd.isoformat(), ns[0].strftime("%H:%M"))
             break
         nd += datetime.timedelta(days=1)
     return st
@@ -389,9 +405,10 @@ def _rang_today(stamp, today):
 
 
 def ring_time(rule, status):
-    """The time a time rule rings today. With "before_close" it moves earlier by the gap between the
-    normal and the shortened close on a day in NSE_EARLY_CLOSE (never, for now: the NSE has no half days)."""
+    """The time a time rule rings today."""
     at = _hhmm(rule.get("at"))
+    if rule.get("before_close") and status.get("date") == MUHURAT_DATE:
+        return MUHURAT_FLAT_BY
     if rule.get("before_close") and status.get("early_close"):
         base = datetime.date(2000, 1, 1)
         gap = datetime.datetime.combine(base, CLOSE) - datetime.datetime.combine(base, EARLY)

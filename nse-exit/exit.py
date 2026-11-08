@@ -96,6 +96,10 @@ CALENDAR_YEARS = (2026,)   # the official 2027 list is not out yet
 OPEN = datetime.time(9, 15)
 CLOSE = datetime.time(15, 30)
 EARLY = datetime.time(12, 30)   # only used for a date listed in NSE_EARLY_CLOSE
+MUHURAT_DATE = "2026-11-08"
+MUHURAT_OPEN = datetime.time(14, 20)
+MUHURAT_CLOSE = datetime.time(15, 15)
+MUHURAT_FLAT_BY = datetime.time(15, 10)
 IST_OFFSET = datetime.timedelta(hours=5, minutes=30)   # fixed: India has no daylight saving
 
 
@@ -174,6 +178,8 @@ def ampm(t):
 
 def session(d):
     """(open_time, close_time) in IST, or None if closed all day."""
+    if d.isoformat() == MUHURAT_DATE:
+        return MUHURAT_OPEN, MUHURAT_CLOSE
     if d.weekday() >= 5 or d.isoformat() in NSE_HOLIDAYS:
         return None
     return OPEN, (EARLY if d.isoformat() in NSE_EARLY_CLOSE else CLOSE)
@@ -529,24 +535,40 @@ def read_config(path):
 
 
 def resolve_flat_by(day, explicit, cfg, entry_time):
-    """(HH:MM, note). The config's flat-by moves up with a shortened session (the NSE has none scheduled)."""
-    t = parse_hhmm(explicit or cfg.get("flat_by") or DEFAULTS["flat_by"], "--flat-by" if explicit else "flat_by")
-    note = ""
+    """(HH:MM, note). Muhurat has a fixed 15:10 exit."""
+    is_muhurat = bool(day and day.isoformat() == MUHURAT_DATE)
+
+    if is_muhurat and not explicit:
+        t = MUHURAT_FLAT_BY
+        note = "fixed Muhurat-session exit"
+    else:
+        t = parse_hhmm(
+            explicit or cfg.get("flat_by") or DEFAULTS["flat_by"],
+            "--flat-by" if explicit else "flat_by"
+        )
+        note = ""
+
     s = session(day) if day else None
     if s:
         close_dt = datetime.datetime.combine(day, s[1])
         at = datetime.datetime.combine(day, t)
         if at >= close_dt:
             if explicit:
-                raise PlanError("--flat-by %s is at or after the %s close on %s" % (hm(t), ampm(s[1]), day))
+                raise PlanError(
+                    "--flat-by %s is at or after the %s close on %s"
+                    % (hm(t), ampm(s[1]), day)
+                )
             moved = at - (datetime.datetime.combine(day, CLOSE) - close_dt)
             if moved.time() <= OPEN:
                 raise PlanError("flat_by %s in the config is at or after the close" % hm(t))
             t = moved.time()
             note = "moved up for the shortened session (%s)" % NSE_EARLY_CLOSE.get(day.isoformat(), "")
+
     if entry_time and entry_time >= t:
-        raise PlanError("the entry at %s is at or after your flat-by %s: there is no time left to hold it"
-                        % (ampm(entry_time), hm(t)))
+        raise PlanError(
+            "the entry at %s is at or after your flat-by %s: there is no time left to hold it"
+            % (ampm(entry_time), hm(t))
+        )
     return hm(t), note
 
 

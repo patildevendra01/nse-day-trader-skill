@@ -97,9 +97,11 @@ Hits are listed most traded first (price times volume).
 
 ## The opening-range breakout scan (during the session)
 
-NSE trades 09:15 to 15:30 IST after a pre-open call auction from 09:00 to
-09:15 (no bars, no entries). The opening range is the first `--or-minutes`
-(15) of the session: the 09:15, 09:20 and 09:25 five-minute bars. A hit is
+Normal NSE sessions run 09:15 to 15:30 IST after the 09:00–09:15
+pre-open call auction. On Muhurat day (Sunday 2026-11-08), the special
+continuous session runs 14:20 to 15:15 IST. The opening range is the first
+`--or-minutes` (15) of the session: 09:15, 09:20 and 09:25 normally, or
+14:20, 14:25 and 14:30 on Muhurat day. A hit is
 the first completed 5-minute bar to CLOSE above the range high, at that
 bar's close time.
 
@@ -113,13 +115,14 @@ bar's close time.
    checks at most `--max-confirm` (200) of them, the most traded first, and
    prints PARTIAL with the count it skipped. `--max-confirm 0` checks them all.
 
-A chart is usable only when every 5-minute bar from 09:15 to the cutoff is
-there; a missing bar means a halt or a thin stock. Null closes are dropped, a
+A chart is usable only when every 5-minute bar from the session open to the
+cutoff is there; a missing bar means a halt or a thin stock. Null closes are dropped, a
 bar off the 5-minute grid (the live tick) is dropped, and a bar counts only
-once it is complete (start + 5 minutes). Before 09:35, on a weekend or an NSE
-holiday, after the close, or after `no_entries_after` (an expired setup) it
-prints one plain line and writes nothing. NSE has no half-days; the Diwali
-Muhurat evening session is a special hour the tools treat as closed.
+once it is complete (start + 5 minutes). Before the opening range completes (09:35 normally, 14:35 on Muhurat
+day), on a closed day, after the close, or after `no_entries_after`, it
+prints one plain line and writes nothing. Muhurat scans use a 15:00 cutoff.
+If Yahoo supplies no usable 5-minute bars for the 14:20–15:15 session, the
+scan fails closed and reports that the feed could not support a conclusion.
 
 ## Data and limits
 
@@ -182,8 +185,8 @@ never calls data real time, and never promises that a setup works.
 ## Differences from the US pack
 
 NSE lists (Nifty 500 default) instead of Nasdaq Trader's directories, EQ
-series only, ₹20 price floor, IST with a 09:15 open and 15:30 close, 75 bars a
-session, no early-close days, bare symbols with a `.NS` suffix for Yahoo.
+series only, ₹20 price floor, IST with a normal 09:15 open and 15:30 close, plus the 2026-11-08
+Muhurat session from 14:20 to 15:15, no early-close days, bare symbols with a `.NS` suffix for Yahoo.
 
 ## Safety
 

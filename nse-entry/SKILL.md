@@ -26,9 +26,10 @@ the Exit Planner, and stops. It never buys anything. Day trading loses most
 people money, and a clean signal does not change that.
 
 Everything is India Standard Time (IST, UTC+05:30, no daylight saving). The
-NSE trades Monday to Friday, 09:15 to 15:30 IST. From 09:00 to 09:15 is the
-pre-open call auction: no continuous trading and no bars, so the clock for the
-opening range starts at 09:15.
+Normal NSE sessions run Monday to Friday, 09:15 to 15:30 IST. The 09:00
+to 09:15 period is the pre-open call auction. The special Muhurat session
+on Sunday 2026-11-08 runs 14:20 to 15:15 IST; its opening range starts at
+14:20.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
@@ -77,14 +78,17 @@ by bar without waiting.
 - **Volume, if you want it.** `--min-volume-x 1.5` also needs the trigger
   bar's volume at 1.5 times the range bars' average. The 9:15 bar carries the
   open, so 1.0 is already strict.
-- **Time limits.** No entries before 09:30 or after 14:30 (config). That
-  leaves about 45 minutes before the 15:15 flat-by, because brokers auto
+- **Time limits.** On normal sessions, no entries before 09:30 or after 14:30 (config).
+  On Muhurat day, the fixed entry window is 14:40 to 15:00 IST, with a
+  15:10 flat-by time. Normal-session timing does not apply on that day.
+  On normal sessions, this leaves about 45 minutes before the 15:15 flat-by,
+  because brokers auto
   square off MIS positions around 15:15 to 15:25 and charge for it. The NSE has
   no scheduled half days; if it ever announces a shortened session the cutoff
   moves up with the close.
 - **What it says.** Waiting (and how far the last close is from the level),
-  triggered, expired, or no data. Before 09:15: not open yet (pre-open).
-  Before 09:30: the range is still forming. Weekends and NSE holidays: the
+  triggered, expired, or no data. Before the session open: not open yet (pre-open).
+  Before 09:30 normally, or 14:35 on Muhurat day: the range is still forming. Weekends and NSE holidays: the
   market is closed. The 2026 holiday list is built in. The official 2027 list
   is not out yet, so for 2027 the tool says the calendar is unknown: check
   nseindia.com.
@@ -158,8 +162,8 @@ Verified offline against fixtures; live endpoints not exercised at build time.
 
 ## Differences from the US pack
 
-IST instead of US Eastern time, no daylight saving, 09:15 open and 15:30
-close, bare NSE symbols with `.NS` added for Yahoo, rupee prices with Indian
+IST instead of US Eastern time, no daylight saving, normal 09:15 open
+and 15:30 close, plus the 2026-11-08 Muhurat session (14:20–15:15), bare NSE symbols with `.NS` added for Yahoo, rupee prices with Indian
 digit grouping, an earlier last-entry time (14:30) because of the MIS
 square-off, and the NSE 2026 holiday list instead of the US exchange one.
 

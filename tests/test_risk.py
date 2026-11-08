@@ -354,11 +354,36 @@ class IntradayChecks(unittest.TestCase):
         self.assertEqual(verdicts(v("2026-10-30 09:15", no_entries_before="09:15")), ["PASS"])
         self.assertEqual(verdicts(v("2026-10-30 03:00", no_entries_before=None, no_entries_after=None)), ["PASS"])
 
+    def test_muhurat_entry_window_is_mandatory(self):
+        # Config cannot widen or disable the special-session limits.
+        c = cfg(no_entries_before=None, no_entries_after=None)
+
+        res = check.check([reliance()], c, now=at("2026-11-08 14:19"))
+        self.assertIn("market is closed", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 14:20"))
+        self.assertIn("no new entries before 14:40", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 14:39"))
+        self.assertIn("no new entries before 14:40", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 14:40"))
+        self.assertNotIn("no new entries", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 15:00"))
+        self.assertNotIn("no new entries", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 15:01"))
+        self.assertIn("no new entries after 15:00", reasons(res))
+
+        res = check.check([reliance()], c, now=at("2026-11-08 15:15"))
+        self.assertIn("market is closed", reasons(res))
+
     def test_weekends_and_holidays_are_closed(self):
         res = check.check([reliance()], cfg(), now=at("2026-10-31 10:00"))     # Saturday
         self.assertIn("the market is closed today (weekend, Sat 2026-10-31 10:00 IST)", reasons(res))
         res = check.check([reliance()], cfg(), now=at("2026-11-08 18:00"))     # Sunday, Diwali Muhurat evening
-        self.assertIn("weekend", reasons(res))
+        self.assertIn("market is closed", reasons(res))
         res = check.check([reliance()], cfg(), now=at("2026-10-20 10:00"))     # Dussehra, a Tuesday
         self.assertIn("NSE holiday: Dussehra", reasons(res))
         res = check.check([reliance()], cfg(), now=at("2026-11-24 10:00"))
