@@ -106,7 +106,7 @@ But:
 | `nse/orders.json` | the proposed orders (nse-budget writes it; `flatten` replaces it) |
 | `nse/state/risk.json` | nse-risk's verdicts; only a PASS from today is READY |
 | `nse/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss (IST stamps) |
-| `nse/portfolio.json` | cash and shares, updated by `fill` and by `result --filled-qty` |
+| `nse/portfolio.json` | cash and shares, updated by `fill`, `result --filled-qty`, and `reconcile-fill` |
 | `nse/plan.json` | the flat-by time for `flatten` |
 
 ## Setup A: Zerodha Kite MCP (Claude Desktop)
@@ -201,8 +201,12 @@ money). If the connector has no order tool, stay in paper mode.
    with `result --status placed --filled-qty Q --filled-price P`. The exits
    command rejects requests unless Q exactly matches that recorded fill. Cancel
    any unfilled remainder of the entry order first, then verify the broker's
-   current net position matches Q. If the broker's fill or net position changes,
-   stop and reconcile the recorded fill before generating exits. Never place
+   current net position matches Q. If another entry partial fill arrives, use
+   `ticket.py reconcile-fill --index N --filled-qty TOTAL --filled-price AVERAGE`
+   with the broker's cumulative filled quantity and cumulative average price; it
+   applies only the new share delta. Never use it for exit fills or a reduced
+   position. If the net position changes for another reason, stop and reconcile
+   manually before generating exits. Never place
    exits for more shares than the broker currently holds. Each live exit still
    needs its own Allow once.
 
