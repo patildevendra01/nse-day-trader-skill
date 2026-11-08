@@ -397,14 +397,14 @@ def risk_verdict(risk, fp, today):
 def status_of(order, risk, state, today, cfg=None):
     """(ready, label, risk_result); risk must have been checked in the current mode."""
     if risk is not None:
-        checked_config = risk.get("config_sha256")
-        current_config = (cfg or {}).get("_config_sha256")
-        if not checked_config or checked_config != current_config:
-            return False, "NOT READY: risk settings changed since the risk check (or the check is old); run nse-risk again", None
         checked_paper = bool(risk.get("paper", True))
         current_paper = bool((cfg or {}).get("paper", True))
         if checked_paper != current_paper:
             return False, "NOT READY: paper/live mode changed since the risk check; run nse-risk again", None
+        checked_config = risk.get("config_sha256")
+        current_config = (cfg or {}).get("_config_sha256")
+        if not checked_config or checked_config != current_config:
+            return False, "NOT READY: risk settings changed since the risk check (or the check is old); run nse-risk again", None
     fp = fingerprint(order)
     rv, why = risk_verdict(risk, fp, today)
     if rv is None:
