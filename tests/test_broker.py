@@ -291,6 +291,17 @@ class Flow(unittest.TestCase):
         self.assertIn("paper/live mode changed since the risk check", err)
         self.assertFalse(os.path.exists(self.state))
 
+    def test_a_risk_pass_cannot_be_reused_after_changing_risk_limits(self):
+        self.assertEqual(self.run_risk(), 0)
+        self.set_cfg(max_loss_per_trade_inr=100)
+        code, text, _ = run(self.args("show", "--index", "1"))
+        self.assertEqual(code, 1)
+        self.assertIn("risk settings changed since the risk check", text)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes"))
+        self.assertEqual(code, 1)
+        self.assertIn("risk settings changed since the risk check", err)
+        self.assertFalse(os.path.exists(self.state))
+
     def test_the_live_flow_sends_the_entry_call_then_the_legs(self):
         self.set_cfg(paper=False)
         self.run_risk()
