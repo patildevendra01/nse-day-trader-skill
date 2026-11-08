@@ -110,7 +110,7 @@ But:
 | `nse/orders.json` | the proposed orders (nse-budget writes it; `flatten` replaces it) |
 | `nse/state/risk.json` | nse-risk's verdicts; only a PASS from today is READY |
 | `nse/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss (IST stamps) |
-| `nse/portfolio.json` | cash and shares, updated by `fill`, `result --filled-qty`, and `reconcile-fill`; order-linked fills carry idempotency keys so retrying after a partial file-write failure does not apply the same share delta twice |
+| `nse/portfolio.json` | cash and shares, updated by `fill`, `result --filled-qty`, and `reconcile-fill`; order-linked fills carry idempotency keys so retrying after a partial file-write failure does not apply the same share delta twice. Before a sale, the tool verifies that position shares match valid lot records and blocks the sale if they do not |
 | `nse/plan.json` | the flat-by time for `flatten` |
 
 ## Setup A: Zerodha Kite MCP (Claude Desktop)
