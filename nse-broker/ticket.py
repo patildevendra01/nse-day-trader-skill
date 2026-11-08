@@ -439,8 +439,10 @@ def render(order, idx, total, cfg, risk, state, today):
     paper = cfg.get("paper", True)
     mode = "PAPER mode (nothing is sent to a broker)" if paper else "LIVE ACCOUNT, REAL MONEY"
     lines = ["ORDER %d of %d, %s, %s" % (idx, total, mode, broker_name(cfg))]
-    for part in plain_parts(order):
-        lines.append("  " + part)
+    parts = plain_parts(order)
+    lines.append("  " + parts[0])
+    if len(parts) > 1 and parts[-1].startswith("max loss "):
+        lines.append("  " + parts[-1])
     if order.get("why"):
         lines.append("  why: " + order["why"])
     lines.append("  " + label)
@@ -464,7 +466,7 @@ def render(order, idx, total, cfg, risk, state, today):
         lines.append("  The stop-loss and target are separate orders and do NOT cancel each other; when one fills,")
         lines.append("  cancel the other yourself.")
     if ready:
-        lines.append("  Reply \"yes\" to approve this ticket (the entry and its two exit orders), or \"no\" to skip it.")
+        lines.append("  Reply \"yes\" to approve this entry and its planned protection, or \"no\" to skip it.")
         if not paper:
             lines.append("  Claude's own card then asks again for each order: Allow once places it, Deny stops it.")
     return "\n".join(lines), ready
@@ -473,7 +475,10 @@ def render(order, idx, total, cfg, risk, state, today):
 def ticket_json(order, idx, cfg, risk, state, today):
     ready, label, rv = status_of(order, risk, state, today, cfg)
     loss, stop = max_loss(order)
-    return {"index": idx, "ready": ready, "status": label, "plain": plain(order),
+    summary = plain_parts(order)[0]
+    if loss is not None:
+        summary += " / max loss about %s if the stop fills at %s" % (_money(loss), _p(stop))
+    return {"index": idx, "ready": ready, "status": label, "plain": summary,
             "fingerprint": fingerprint(order), "paper": bool(cfg.get("paper", True)),
             "broker": cfg.get("broker", "zerodha"), "tool": "your broker connector's order-placement tool",
             "tool_input": tool_input(order), "legs": [{"role": r, "params": p} for r, p in legs(order, cfg)[:1]],
@@ -617,7 +622,9 @@ def cmd_approve(a):
            "paper": bool(cfg.get("paper", True)), "broker": cfg.get("broker", "zerodha")}
     state.setdefault("orders", []).append(rec)
     write_json(a.state, state)
-    print("Recorded your yes for order %d: %s." % (a.index, plain(order)))
+    print("Recorded your yes for order %d: %s." % (a.index, plain_parts(order)[0]))
+    if has_legs(order):
+        print("The stop-loss and target will be generated only after the actual filled quantity is confirmed.")
     if cfg.get("paper", True):
         print("Paper mode: do not call any broker tool. Record the simulated fill with: ticket.py result "
               "--index %d --status placed --filled-qty %s --filled-price PRICE" % (a.index, _str_num(order.get("qty"))))
