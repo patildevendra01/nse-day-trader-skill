@@ -150,6 +150,68 @@ def _valid_positive_number(value):
         return False
 
 
+def inspect_series_quality(series):
+    """Inspect daily OHLC/adjustment integrity without claiming source completeness."""
+    import datetime
+    errors = []
+    gaps = []
+    if not isinstance(series, dict):
+        return {"status": "rejected", "bars_checked": 0,
+                "errors": ["chart is not an object"], "possible_date_gaps": []}
+    timestamps = series.get("t")
+    if not isinstance(timestamps, list) or not timestamps:
+        return {"status": "rejected", "bars_checked": 0,
+                "errors": ["missing or empty timestamp array"], "possible_date_gaps": []}
+    keys = ("o", "h", "l", "c", "adjclose")
+    arrays = {}
+    for key in keys:
+        value = series.get(key)
+        if not isinstance(value, list):
+            errors.append("missing %s array" % key)
+        elif len(value) != len(timestamps):
+            errors.append("%s length does not match timestamps" % key)
+        else:
+            arrays[key] = value
+    dates = []
+    for i, stamp in enumerate(timestamps):
+        try:
+            if isinstance(stamp, bool):
+                raise ValueError("boolean timestamp")
+            day = scan.ts_to_ist(stamp).date()
+        except (TypeError, ValueError, OverflowError):
+            errors.append("invalid timestamp at row %d" % (i + 1))
+            continue
+        dates.append(day)
+        if i and dates[-1] <= dates[-2]:
+            errors.append("timestamps are duplicated or out of chronological order at row %d" % (i + 1))
+        if not all(key in arrays for key in keys):
+            continue
+        try:
+            o, h, lo, c, adj = (float(arrays[key][i]) for key in keys)
+        except (TypeError, ValueError, OverflowError):
+            errors.append("non-numeric or null OHLC/adjusted-close value at row %d" % (i + 1))
+            continue
+        if any(not math.isfinite(x) or x <= 0 for x in (o, h, lo, c, adj)):
+            errors.append("non-finite or non-positive OHLC/adjusted-close value at row %d" % (i + 1))
+            continue
+        if h < max(o, c, lo) or lo > min(o, c, h):
+            errors.append("inconsistent OHLC high/low at row %d" % (i + 1))
+    # A gap of four or more calendar days can contain a missing weekday session.
+    # It is only a warning: historical exchange holidays are not fully represented here.
+    ordered_dates = sorted(set(dates))
+    for previous, current in zip(ordered_dates, ordered_dates[1:]):
+        calendar_days = (current - previous).days
+        if calendar_days >= 4:
+            gaps.append({"after": previous.isoformat(), "before": current.isoformat(),
+                         "calendar_days_apart": calendar_days,
+                         "warning": "possible missing session; verify exchange holidays"})
+    return {
+        "status": "review_required" if errors or gaps else "no_detectable_issue",
+        "bars_checked": len(timestamps),
+        "errors": sorted(set(errors)),
+        "possible_date_gaps": gaps,
+    }
+
 
 def load_universe_history(path):
     """Read inclusive point-in-time membership intervals from a CSV file."""
@@ -248,6 +310,8 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
     symbols = list(symbols or sorted(data))
     all_trades, skipped, loaded = [], 0, 0
     missing_adjustments, invalid_adjustments = [], []
+    data_quality = {}
+    rejected_data_quality = []
     excluded_by_universe = 0
     if universe_history is not None and not isinstance(universe_history, dict):
         universe_history = load_universe_history(universe_history)
@@ -256,6 +320,11 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
     for symbol in symbols:
         series = data.get(symbol)
         if not series:
+            continue
+        quality = inspect_series_quality(series)
+        data_quality[symbol] = quality
+        if quality["errors"]:
+            rejected_data_quality.append(symbol)
             continue
         if not isinstance(series.get("adjclose"), list):
             missing_adjustments.append(symbol)
@@ -281,6 +350,10 @@ def evaluate(data, symbols=None, now_utc=None, round_trip_cost_pct=0.0, universe
         "symbols_loaded": loaded,
         "symbols_rejected_missing_adjusted_close": missing_adjustments,
         "symbols_rejected_incomplete_adjusted_close": invalid_adjustments,
+        "symbols_rejected_data_quality": rejected_data_quality,
+        "data_quality": data_quality,
+        "symbols_with_possible_date_gaps": sorted(
+            symbol for symbol, quality in data_quality.items() if quality["possible_date_gaps"]),
         "corporate_action_adjustment": "Yahoo adjusted close; each OHLC bar scaled by adjusted-close / raw-close. This incorporates Yahoo's split and dividend adjustments when supplied by the feed.",
         "trade_costs_included": round_trip_cost_pct > 0,
         "round_trip_cost_assumption_pct": round_trip_cost_pct,
@@ -351,6 +424,12 @@ def main(argv=None):
                 print("Rejected (no adjusted-close data): %s" % ", ".join(report["symbols_rejected_missing_adjusted_close"]))
             if report["symbols_rejected_incomplete_adjusted_close"]:
                 print("Rejected (incomplete adjusted-close data): %s" % ", ".join(report["symbols_rejected_incomplete_adjusted_close"]))
+            if report["symbols_rejected_data_quality"]:
+                print("Rejected (invalid OHLC, timestamps or adjusted-close structure): %s" % ", ".join(report["symbols_rejected_data_quality"]))
+            for symbol, quality in report["data_quality"].items():
+                if quality["possible_date_gaps"]:
+                    print("WARNING: %s has %d possible date gap(s); verify holidays and missing sessions."
+                          % (symbol, len(quality["possible_date_gaps"])))
             if not report["summary"]:
                 print("No evaluable signals in this data.")
             for row in report["summary"]:
