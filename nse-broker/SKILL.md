@@ -80,8 +80,12 @@ Kite Connect API, so map them to whatever your connector calls them):
 One yes covers the whole ticket (all three legs), because they are one
 decision. But:
 
-- **Place the stop-loss and take-profit only AFTER the entry has filled.** A
-  sell placed first would open a short MIS position.
+- **The normal `show` command prints the entry only.** It withholds exit tickets
+  until the entry fill is confirmed. After checking the broker's current net
+  position, run `ticket.py exits --index N --filled-qty Q`; this prints exit
+  orders only, sized to Q. A partial fill must use the actual filled quantity,
+  not the originally requested quantity. A sell placed first or for too many
+  shares could open a short MIS position.
 - **The two exit orders do not cancel each other.** When one fills, cancel
   the other yourself (a leftover limit sell could later sell shares you no
   longer hold, which is a short sale).
@@ -186,8 +190,13 @@ money). If the connector has no order tool, stay in paper mode.
    `--status failed` with `--note`. A failed order is not retried without a new
    check and a new yes. The log keeps the entry's max loss for nse-risk's daily
    limit.
-6. Once the entry has filled, place the stop-loss and take-profit legs from the
-   same ticket (live mode: each behind its own Allow once).
+6. Do NOT use exit quantities from the original ticket. Once the entry has
+   filled, check the broker's current net position (including partial fills),
+   then run `ticket.py exits --index N --filled-qty Q`. This prints ONLY the
+   stop-loss and take-profit orders at that confirmed quantity; it never repeats
+   the entry. If fills change, use the current broker-confirmed net quantity.
+   Never place exits for more shares than the broker currently holds. Each live
+   exit still needs its own Allow once.
 
 ## Steps: while it is open, and out by the close
 
@@ -239,7 +248,7 @@ stay in the file; they are never sent.
 - Never places orders from a scheduled or background task: nobody is there to say yes.
 - Never asks for, reads, stores or repeats passwords, PINs, TOTP codes or API keys.
 - Never switches `"paper"` to false. The user does that themselves.
-- Never places the stop or the target before the entry fills, and never leaves old exit orders open beside a flatten sell.
+- Never prints executable exit legs with the original requested quantity. Exit legs are generated separately using the broker-confirmed filled quantity; never places exits for more shares than the current position, and never leaves old exit orders open beside a flatten sell.
 - Never uses GTT orders, bulk cancel or close-everything tools on its own.
 - Never promises a fill price: a market order and a stop fill at whatever the market gives, and a stock at a circuit limit may not fill at all.
 
