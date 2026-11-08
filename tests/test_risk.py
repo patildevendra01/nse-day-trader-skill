@@ -271,7 +271,12 @@ class IntradayChecks(unittest.TestCase):
         old = {"RELIANCE": at("2026-10-30 09:00")}          # 40 minutes before NOW
         res = check.check([reliance()], cfg(), prices={"RELIANCE": 1440.00}, now=at(NOW), price_times=old)
         self.assertEqual(verdicts(res), ["PASS"])
+        self.assertEqual(res["results"][0]["entry_ref"], 1432.60)  # plan, not the stale 1440 quote
         self.assertIn("older than 15 minutes: not used", warnings(res))
+        no_plan = reliance(plan={})
+        res = check.check([no_plan], cfg(), prices={"RELIANCE": 1440.00}, now=at(NOW), price_times=old)
+        self.assertEqual(verdicts(res), ["BLOCK"])
+        self.assertIn("no price for RELIANCE", reasons(res))
         future = {"RELIANCE": at("2026-10-30 10:30")}
         res = check.check([reliance()], cfg(), prices={"RELIANCE": 1440.00}, now=at(NOW), price_times=future)
         self.assertEqual(verdicts(res), ["PASS"])
