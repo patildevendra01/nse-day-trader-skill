@@ -266,6 +266,15 @@ def tool_input(order):
     return entry_params(order)
 
 
+def filled_max_loss(qty, price, stop):
+    """Actual entry risk at the recorded stop; None means the stop cannot cap loss."""
+    q, p, s = _f(qty), _f(price), _f(stop)
+    if q is None or p is None or s is None or not all(math.isfinite(x) for x in (q, p, s)):
+        return None
+    if q <= 0 or p <= s:
+        return None
+    return round(q * (p - s), 2)
+
 def max_loss(order):
     """(rupees, stop) lost if the stop fills exactly at the stop, or (None, stop)."""
     stop = _f(order.get("stop_loss")) or _f((order.get("plan") or {}).get("stop"))
@@ -740,6 +749,11 @@ def cmd_result(a):
     if filled_qty is not None:
         new["filled_qty"] = filled_qty
         new["filled_price"] = price
+        if rec.get("kind") == "entry":
+            actual_loss = filled_max_loss(filled_qty, price, rec.get("stop"))
+            new["max_loss"] = actual_loss
+            if actual_loss is None:
+                new["fill_risk_warning"] = "actual fill is at or below the recorded stop, or the stop is missing; daily loss cannot be safely estimated"
     if a.status == "placed" and filled_qty is not None:
         fill_id = "entry:%s:%s:%d" % (today, fp, filled_qty)
         apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], filled_qty, price, today, fill_id=fill_id)
@@ -750,6 +764,10 @@ def cmd_result(a):
     print("Recorded order %d as %s." % (a.index, a.status))
     if a.status == "placed" and filled_qty is not None:
         print("Added the fill to %s." % a.portfolio)
+        if new.get("fill_risk_warning"):
+            print("WARNING: " + new["fill_risk_warning"])
+        elif rec.get("kind") == "entry":
+            print("Daily loss record updated to the actual fill risk: %s." % _money(new["max_loss"]))
     elif a.status == "placed":
         print("When the first fill is confirmed, attach it to this order with:")
         print("  ticket.py result --index %d --status placed --filled-qty Q --filled-price P" % a.index)
@@ -794,6 +812,12 @@ def cmd_reconcile_fill(a):
     new.update(at=ist_iso(now), date=today, status="placed", filled_qty=new_qty,
                filled_price=avg_price, fill_update=True, fill_delta_qty=delta_qty,
                fill_delta_price=round(delta_price, 8))
+    actual_loss = filled_max_loss(new_qty, avg_price, rec.get("stop"))
+    new["max_loss"] = actual_loss
+    if actual_loss is None:
+        new["fill_risk_warning"] = "actual cumulative fill is at or below the recorded stop, or the stop is missing; daily loss cannot be safely estimated"
+    else:
+        new.pop("fill_risk_warning", None)
     fill_id = "entry:%s:%s:%d" % (today, fp, new_qty)
     apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], delta_qty, delta_price, today, fill_id=fill_id)
     state["orders"].append(new)
@@ -802,6 +826,10 @@ def cmd_reconcile_fill(a):
     print("Updated cumulative entry fill: %d shares at average %s." % (new_qty, _p(avg_price)))
     print("Added only the new %d-share fill (incremental price %s) to %s." %
           (delta_qty, _p(delta_price), a.portfolio))
+    if new.get("fill_risk_warning"):
+        print("WARNING: " + new["fill_risk_warning"])
+    else:
+        print("Daily loss record updated to the actual cumulative fill risk: %s." % _money(actual_loss))
     print("Verify the broker's current net position before generating exits:")
     print("  ticket.py exits --index %d --filled-qty %d" % (a.index, new_qty))
     return 0
