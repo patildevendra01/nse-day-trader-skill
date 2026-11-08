@@ -744,6 +744,46 @@ def cmd_result(a):
     return 0
 
 
+def cmd_reconcile_fill(a):
+    """Update an entry's cumulative broker fill; apply only the newly filled delta."""
+    orders, cfg, risk, state, today, now = _load(a)
+    order = _pick(orders, a.index)
+    fp = fingerprint(order)
+    rec = latest(state, fp, today)
+    if not rec or rec.get("status") != "placed" or rec.get("kind") != "entry":
+        raise TicketError("reconcile-fill needs an entry already recorded as placed")
+    old_qty = rec.get("filled_qty")
+    old_price = _f(rec.get("filled_price"))
+    if old_qty is None or old_price is None:
+        raise TicketError("no earlier fill is recorded; use result --status placed with --filled-qty and --filled-price first")
+    new_qty = _confirmed_fill_qty(a.filled_qty, order.get("qty"))
+    if new_qty <= int(old_qty):
+        raise TicketError("cumulative --filled-qty must be greater than the previously recorded fill (%s)"
+                          % _str_num(old_qty))
+    avg_price = _f(a.filled_price)
+    if avg_price is None or not math.isfinite(avg_price) or avg_price <= 0:
+        raise TicketError("--filled-price must be the broker-confirmed cumulative average fill price")
+    delta_qty = new_qty - int(old_qty)
+    delta_value = avg_price * new_qty - old_price * int(old_qty)
+    delta_price = delta_value / delta_qty
+    if not math.isfinite(delta_price) or delta_price <= 0:
+        raise TicketError("new cumulative average price implies an invalid incremental fill price")
+    new = dict(rec)
+    new.update(at=ist_iso(now), date=today, status="placed", filled_qty=new_qty,
+               filled_price=avg_price, fill_update=True, fill_delta_qty=delta_qty,
+               fill_delta_price=round(delta_price, 8))
+    state["orders"].append(new)
+    write_json(a.state, state)
+    apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], delta_qty, delta_price, today)
+    log_fill(a.state, now, today, rec["symbol"], rec["side"], delta_qty, delta_price)
+    print("Updated cumulative entry fill: %d shares at average %s." % (new_qty, _p(avg_price)))
+    print("Added only the new %d-share fill (incremental price %s) to %s." %
+          (delta_qty, _p(delta_price), a.portfolio))
+    print("Verify the broker's current net position before generating exits:")
+    print("  ticket.py exits --index %d --filled-qty %d" % (a.index, new_qty))
+    return 0
+
+
 def cmd_fill(a):
     cfg = read_json(a.config, "config", required=False) or {}
     now = parse_now(a.now)
@@ -867,6 +907,12 @@ def main(argv=None):
     p.add_argument("--filled-qty")
     p.add_argument("--filled-price")
     p.add_argument("--portfolio", default="nse/portfolio.json")
+    p = sub.add_parser("reconcile-fill", help="add a newly confirmed partial fill to an entry")
+    common(p)
+    p.add_argument("--index", type=int, required=True)
+    p.add_argument("--filled-qty", required=True, help="new cumulative filled quantity from broker")
+    p.add_argument("--filled-price", required=True, help="new cumulative average fill price from broker")
+    p.add_argument("--portfolio", default="nse/portfolio.json")
     p = sub.add_parser("fill", help="record a fill in nse/portfolio.json")
     p.add_argument("--symbol", required=True)
     p.add_argument("--side", required=True, choices=["buy", "sell"])
@@ -895,7 +941,7 @@ def main(argv=None):
         return 1
     try:
         return {"show": cmd_show, "exits": cmd_exits, "approve": cmd_approve, "decline": cmd_decline,
-                "result": cmd_result, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
+                "result": cmd_result, "reconcile-fill": cmd_reconcile_fill, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1
